@@ -1371,6 +1371,7 @@ function renderEnvioDetalle(content, id){
       const deudaAsociada = DB.deudas.find(d=>d.origen==='envio' && d.origen_id===e.id);
       applyEnvioBalance(e, -1, deudaAsociada);
       if(deudaAsociada){
+        if(deudaAsociada.estado==='pagado') adjustBalance(deudaAsociada.divisa, deudaAsociada.monto);
         DB.deudas = DB.deudas.filter(x=>x.id!==deudaAsociada.id);
       }
       DB.envios = DB.envios.filter(x=>x.id!==e.id);
@@ -1550,6 +1551,9 @@ function guardarEdicionEnvio(e, nuevo){
   const newDescuentaAhora = !!nuevo.descuenta_ahora;
 
   applyEnvioBalance(e, -1, deudaExistente);
+  if(deudaExistente && deudaExistente.estado==='pagado'){
+    adjustBalance(deudaExistente.divisa, deudaExistente.monto);
+  }
 
   e.cliente_id = nuevo.entityTipo==='cliente' ? nuevo.entity.id : null;
   e.trabajador_id = nuevo.entityTipo==='trabajador' ? nuevo.entity.id : null;
@@ -1578,6 +1582,9 @@ function guardarEdicionEnvio(e, nuevo){
     deudaExistente.divisa = e.divisa_entrega;
     deudaExistente.fecha = e.fecha_hora;
     deudaExistente.nota = e.nota || 'Registrado desde envío';
+    if(deudaExistente.estado==='pagado'){
+      adjustBalance(deudaExistente.divisa, -deudaExistente.monto);
+    }
   } else {
     crearDeudaAutomatica({
       tipo:'pagar_a', persona:personaDeuda, monto:e.cantidad_pagada,

@@ -2955,13 +2955,12 @@ function volverDesdeEnvioDetalle(){
   }
 }
 
-let historialDivisaScrollMemo = 0; // preserva el scroll DENTRO del historial por divisa (su propia lista interna)
+let historialDivisaScrollPorDivisa = {}; // guarda el scroll interno de #hd-list, por nombre de divisa
 
 function openHistorialDivisa(nombre){
   historialDivisaFiltro = 'todos';
   const movimientos = movimientosDeDivisa(nombre);
-  const scrollAlAbrir = historialDivisaScrollMemo;
-  historialDivisaScrollMemo = 0;
+  const scrollAlAbrir = historialDivisaScrollPorDivisa[nombre] || 0;
 
   openModal(`
     <div class="modal-title">Historial — ${escapeHtml(nombre)}</div>
@@ -2973,6 +2972,13 @@ function openHistorialDivisa(nombre){
     <div id="hd-list" style="max-height:55vh;overflow-y:auto;"></div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" id="hd-cerrar">Cerrar</button></div>
   `);
+
+  // Se registra el scroll en tiempo real (no solo al hacer clic en un movimiento),
+  // así queda cubierto sin importar cómo se cierre el modal: botón "Cerrar",
+  // tocando fuera del modal, o entrando al detalle de un movimiento y volviendo.
+  document.getElementById('hd-list').addEventListener('scroll', (e)=>{
+    historialDivisaScrollPorDivisa[nombre] = e.target.scrollTop;
+  });
 
   function refresh(){
     const el = document.getElementById('hd-list');
@@ -2998,7 +3004,6 @@ function openHistorialDivisa(nombre){
       card.onclick = ()=>{
         const m = items[Number(card.dataset.i)];
         if(m){
-          historialDivisaScrollMemo = el.scrollTop;
           retornoHistorialDivisa = nombre;
           irADetalleOriginal(m.origen, m.origenId);
         }
@@ -3014,7 +3019,7 @@ function openHistorialDivisa(nombre){
       refresh();
     };
   });
-  document.getElementById('hd-cerrar').onclick = ()=>{ historialDivisaScrollMemo = 0; closeModal(); };
+  document.getElementById('hd-cerrar').onclick = closeModal;
   refresh();
   if(scrollAlAbrir){
     const el = document.getElementById('hd-list');

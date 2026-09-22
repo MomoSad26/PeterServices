@@ -1,12 +1,16 @@
 /* =========================================================================
    REMESAS — App de control de envíos, ventas, gastos y balance
-   Almacenamiento 100% local (localStorage). Sin conexión a internet.
+   Almacenamiento 100% local (IndexedDB, con respaldo en localStorage
+   y migración automática de datos antiguos). Sin conexión a internet.
    ========================================================================= */
 
 /* ---------------------------------------------------------------------- *
  * 1. BASE DE DATOS LOCAL
  * ---------------------------------------------------------------------- */
 const DB_KEY = 'remesas_db_v1';
+const IDB_DB_NAME = 'remesas_app_db';
+const IDB_STORE_NAME = 'kv';
+let dbBackend = 'indexeddb'; // 'indexeddb' | 'localstorage' (respaldo si IndexedDB no está disponible)
 
 function defaultDB(){
   const now = Date.now();
@@ -45,7 +49,7 @@ function defaultDB(){
   };
 }
 
-let DB = loadDB();
+let DB = null; // se inicializa de forma asíncrona en bootstrap() antes de la primera ruta
 
 function normalizarNombresDeudasAutomaticas(){
   let changed = false;
@@ -67,26 +71,105 @@ function normalizarNombresDeudasAutomaticas(){
   if(changed) save();
 }
 
-function loadDB(){
+function mergeConDefaults(parsed){
+  const base = defaultDB();
+  for(const k of Object.keys(base)){ if(!(k in parsed)) parsed[k] = base[k]; }
+  parsed.seq = Object.assign({}, base.seq, parsed.seq);
+  parsed.meta = Object.assign({}, base.meta, parsed.meta);
+  return parsed;
+}
+
+/* ---- Acceso de bajo nivel a IndexedDB (un solo registro con toda la BD) ---- */
+function idbOpen(){
+  return new Promise((resolve, reject)=>{
+    if(!window.indexedDB){ reject(new Error('IndexedDB no disponible')); return; }
+    const req = indexedDB.open(IDB_DB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(IDB_STORE_NAME); };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function idbGet(key){
+  return idbOpen().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+    const req = tx.objectStore(IDB_STORE_NAME).get(key);
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  }));
+}
+function idbSet(key, value){
+  return idbOpen().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).put(value, key);
+    tx.oncomplete = ()=>resolve(true);
+    tx.onerror = ()=>reject(tx.error);
+  }));
+}
+
+/* ---- Respaldo síncrono en localStorage (solo si IndexedDB no está disponible) ---- */
+function loadDBDesdeLocalStorageSync(){
   try{
     const raw = localStorage.getItem(DB_KEY);
-    if(!raw) { const d = defaultDB(); persist(d); return d; }
-    const parsed = JSON.parse(raw);
-    const base = defaultDB();
-    for(const k of Object.keys(base)){ if(!(k in parsed)) parsed[k] = base[k]; }
-    parsed.seq = Object.assign({}, base.seq, parsed.seq);
-    parsed.meta = Object.assign({}, base.meta, parsed.meta);
-    return parsed;
+    if(!raw){ const d = defaultDB(); localStorage.setItem(DB_KEY, JSON.stringify(d)); return d; }
+    return mergeConDefaults(JSON.parse(raw));
   }catch(e){
-    console.error('Error cargando datos, se inicia base nueva', e);
-    const d = defaultDB(); persist(d); return d;
+    console.error('Error cargando datos locales, se inicia base nueva', e);
+    const d = defaultDB();
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(d)); }catch(e2){}
+    return d;
+  }
+}
+
+/* ---- Carga inicial: IndexedDB, con migración automática desde localStorage ---- */
+async function loadDBAsync(){
+  try{
+    const stored = await idbGet(DB_KEY);
+    if(stored) return mergeConDefaults(stored);
+
+    // No hay datos aún en IndexedDB: si existe un respaldo antiguo en
+    // localStorage (versiones previas de la app), se migra una sola vez.
+    let migrado = null;
+    try{
+      const raw = localStorage.getItem(DB_KEY);
+      if(raw) migrado = mergeConDefaults(JSON.parse(raw));
+    }catch(e){ /* respaldo antiguo corrupto: se ignora */ }
+
+    const data = migrado || defaultDB();
+    await idbSet(DB_KEY, data);
+    if(migrado){
+      try{ localStorage.removeItem(DB_KEY); }catch(e){}
+    }
+    return data;
+  }catch(e){
+    console.error('IndexedDB no disponible, usando localStorage como respaldo', e);
+    dbBackend = 'localstorage';
+    return loadDBDesdeLocalStorageSync();
   }
 }
 
 function persist(dbObj){
-  localStorage.setItem(DB_KEY, JSON.stringify(dbObj || DB));
+  const data = dbObj || DB;
+  if(dbBackend === 'indexeddb'){
+    idbSet(DB_KEY, data).catch(e=>{
+      console.error('Error guardando en IndexedDB, se usa localStorage como respaldo', e);
+      dbBackend = 'localstorage';
+      try{ localStorage.setItem(DB_KEY, JSON.stringify(data)); }catch(e2){ console.error('Error guardando datos', e2); }
+    });
+  } else {
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(data)); }catch(e){ console.error('Error guardando datos', e); }
+  }
 }
 function save(){ persist(DB); }
+
+function tamanioBaseDatosBytes(){
+  try{ return new Blob([JSON.stringify(DB)]).size; }catch(e){ return 0; }
+}
+function fmtBytes(bytes){
+  if(!bytes) return '0 KB';
+  const kb = bytes/1024;
+  if(kb < 1024) return `${kb.toFixed(1)} KB`;
+  return `${(kb/1024).toFixed(2)} MB`;
+}
 
 function nextId(tabla){
   const id = DB.seq[tabla] || 1;
@@ -268,12 +351,23 @@ function addPais(nombre){
 /* ---------------------------------------------------------------------- *
  * 5. MODALES / DIÁLOGOS GENÉRICOS
  * ---------------------------------------------------------------------- */
+/* Pila de posiciones de scroll de la página de fondo, una por cada modal
+   abierto. Así, sin tener que tocar cada pantalla individualmente, al cerrar
+   cualquier modal (Balance, Historial por divisa, detalle de venta/compra/
+   gasto/In-Out/deuda, etc.) se restaura exactamente donde estaba el usuario. */
+const modalScrollStack = [];
+
 function closeModal(){
   const root = document.getElementById('modal-root');
   root.innerHTML = '';
+  if(modalScrollStack.length){
+    const y = modalScrollStack.pop();
+    requestAnimationFrame(()=>{ window.scrollTo(0, y); });
+  }
 }
 
 function openModal(html, {center=false} = {}){
+  modalScrollStack.push(getScrollY());
   const root = document.getElementById('modal-root');
   root.innerHTML = `
     <div class="modal-backdrop ${center?'center':''}" id="modal-backdrop">
@@ -460,30 +554,48 @@ function setActiveMenu(view){
   document.getElementById('topbar-title').textContent = TITLES[view] || 'Remesas';
 }
 
+/* ---- Preservar posición de scroll al navegar entre vistas (rutas) ---- */
+const scrollMemory = {};
+let currentRouteView = null;
+function getScrollY(){ return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0; }
+function saveCurrentScroll(){
+  if(currentRouteView) scrollMemory[currentRouteView] = getScrollY();
+}
+function restoreScrollFor(view){
+  if(scrollMemory[view] === undefined) return;
+  const y = scrollMemory[view];
+  requestAnimationFrame(()=>{ requestAnimationFrame(()=>{ window.scrollTo(0, y); }); });
+}
+
 function route(){
+  if(!DB) return; // aún cargando la base de datos (ver bootstrap())
   const {view, param} = parseHash();
+  saveCurrentScroll();
   setActiveMenu(view);
   closeSideMenu();
+  modalScrollStack.length = 0; // evita arrastrar posiciones de modales de la vista anterior
+  currentRouteView = view;
   const content = document.getElementById('app-content');
   switch(view){
-    case 'clientes': return renderClientesList(content, param);
-    case 'cliente-detalle': return renderClienteDetalle(content, Number(param));
-    case 'envio': return renderEnvioClienteForm(content);
-    case 'trabajadores': return renderTrabajadoresList(content);
-    case 'trabajador-detalle': return renderTrabajadorDetalle(content, Number(param));
-    case 'envio-trabajador': return renderEnvioTrabajadorForm(content, Number(param));
-    case 'precio-especial': return renderPrecioEspecialForm(content);
-    case 'historial': return renderHistorial(content, param);
-    case 'envio-detalle': return renderEnvioDetalle(content, Number(param));
-    case 'ventas': return renderVentasList(content);
-    case 'compras': return renderComprasList(content);
-    case 'gastos': return renderGastosList(content);
-    case 'in-out': return renderInOut(content);
-    case 'balance': return renderBalance(content);
-    case 'respaldos': return renderRespaldos(content);
-    case 'deudas': return renderDeudas(content);
-    default: return renderClientesList(content);
+    case 'clientes': renderClientesList(content, param); break;
+    case 'cliente-detalle': renderClienteDetalle(content, Number(param)); break;
+    case 'envio': renderEnvioClienteForm(content); break;
+    case 'trabajadores': renderTrabajadoresList(content); break;
+    case 'trabajador-detalle': renderTrabajadorDetalle(content, Number(param)); break;
+    case 'envio-trabajador': renderEnvioTrabajadorForm(content, Number(param)); break;
+    case 'precio-especial': renderPrecioEspecialForm(content); break;
+    case 'historial': renderHistorial(content, param); break;
+    case 'envio-detalle': renderEnvioDetalle(content, Number(param)); break;
+    case 'ventas': renderVentasList(content); break;
+    case 'compras': renderComprasList(content); break;
+    case 'gastos': renderGastosList(content); break;
+    case 'in-out': renderInOut(content); break;
+    case 'balance': renderBalance(content); break;
+    case 'respaldos': renderRespaldos(content); break;
+    case 'deudas': renderDeudas(content); break;
+    default: renderClientesList(content);
   }
+  restoreScrollFor(view);
 }
 
 function openSideMenu(){
@@ -496,8 +608,16 @@ function closeSideMenu(){
 }
 
 window.addEventListener('hashchange', route);
-normalizarNombresDeudasAutomaticas();
-document.addEventListener('DOMContentLoaded', ()=>{
+
+async function bootstrap(){
+  try{
+    DB = await loadDBAsync();
+  }catch(e){
+    console.error('Error inicializando la base de datos, se usa una base nueva en memoria', e);
+    DB = defaultDB();
+  }
+  normalizarNombresDeudasAutomaticas();
+
   document.getElementById('btn-menu').addEventListener('click', openSideMenu);
   document.getElementById('side-overlay').addEventListener('click', closeSideMenu);
   document.querySelectorAll('.menu-list a').forEach(a=>{
@@ -508,7 +628,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   }
-});
+}
+
+document.addEventListener('DOMContentLoaded', bootstrap);
 
 /* ---------------------------------------------------------------------- *
  * 9. MENÚ 1 — CLIENTES
@@ -1213,6 +1335,7 @@ function renderPrecioEspecialForm(content){
  * 13. MENÚ 5 — HISTORIAL DE ENVÍOS
  * ---------------------------------------------------------------------- */
 let historialFilters = {q:'', tipo:'Todos', fecha:'Todo', fechaDesde:null, fechaHasta:null, forma:'Todas', divisa:'Todas'};
+let retornoHistorialDivisa = null; // (bug preexistente: nunca se declaraba, causaba ReferenceError al volver de un envío)
 
 function entityNameForEnvio(e){
   if(e.trabajador_id){
@@ -1227,6 +1350,7 @@ function entityNameForEnvio(e){
 function applyHistorialFilters(list){
   const f = historialFilters;
   return list.filter(e=>{
+    if(e.archivado) return false;
     if(f.q){
       const name = entityNameForEnvio(e).toLowerCase();
       if(!name.includes(f.q.toLowerCase())) return false;
@@ -1606,7 +1730,7 @@ function guardarEdicionEnvio(e, nuevo){
  * 14. MENÚ 7 — VENTAS (con switch "deuda pendiente")
  * ---------------------------------------------------------------------- */
 function renderVentasList(content){
-  const items = DB.ventas.slice().sort((a,b)=>b.fecha_hora-a.fecha_hora);
+  const items = DB.ventas.filter(v=>!v.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
   content.innerHTML = `
     <h1 class="section-title">Ventas</h1>
     <button class="btn btn-gold btn-block" id="v-nueva">➕ Nueva venta</button>
@@ -1840,7 +1964,7 @@ function guardarEdicionVenta(v, nuevo){
  * 14b. MENÚ 6 — COMPRAS
  * ---------------------------------------------------------------------- */
 function renderComprasList(content){
-  const items = DB.compras.slice().sort((a,b)=>b.fecha_hora-a.fecha_hora);
+  const items = DB.compras.filter(c=>!c.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
   content.innerHTML = `
     <h1 class="section-title">Compras</h1>
     <button class="btn btn-gold btn-block" id="c-nueva">➕ Nueva compra</button>
@@ -2068,7 +2192,7 @@ function guardarEdicionCompra(c, nuevo){
  * 15. MENÚ 8 — GASTOS
  * ---------------------------------------------------------------------- */
 function renderGastosList(content){
-  const items = DB.gastos.slice().sort((a,b)=>b.fecha_hora-a.fecha_hora);
+  const items = DB.gastos.filter(g=>!g.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
   content.innerHTML = `
     <h1 class="section-title">Gastos</h1>
     <button class="btn btn-gold btn-block" id="g-nuevo">➕ Nuevo gasto</button>
@@ -2225,7 +2349,7 @@ function openGastoEditModal(id, onSaved){
  * 15b. MENÚ 9 — IN/OUT
  * ---------------------------------------------------------------------- */
 function renderInOut(content){
-  const items = DB.in_out.slice().sort((a,b)=>b.fecha_hora-a.fecha_hora);
+  const items = DB.in_out.filter(io=>!io.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
   content.innerHTML = `
     <h1 class="section-title">In/Out</h1>
     <div class="subtle" style="margin-bottom:12px;">Entradas y salidas manuales de divisas, sin asociarlas a un envío, compra, venta o gasto.</div>
@@ -2822,7 +2946,9 @@ function volverDesdeEnvioDetalle(){
   retornoHistorialDivisa = null;
   if(divisa){
     location.hash = '#/balance';
+    currentRouteView = 'balance';
     renderBalance(document.getElementById('app-content'));
+    restoreScrollFor('balance');
     openHistorialDivisa(divisa);
   } else {
     history.back();
@@ -2936,9 +3062,23 @@ function editarSaldoDivisa(nombre, onDone){
 /* ---------------------------------------------------------------------- *
  * 17. MENÚ 9 — RESPALDOS
  * ---------------------------------------------------------------------- */
+function diasDesde(ts){
+  if(!ts) return Infinity;
+  return Math.floor((Date.now()-ts)/86400000);
+}
+
 function renderRespaldos(content){
+  const dias = diasDesde(DB.meta.ultimo_respaldo);
+  const mostrarRecordatorio = dias >= 30;
+
   content.innerHTML = `
     <h1 class="section-title">Respaldos</h1>
+    ${mostrarRecordatorio ? `
+      <div class="card" style="border:1.5px solid var(--gold);">
+        <div style="font-weight:700;margin-bottom:4px;">📦 Recordatorio de respaldo</div>
+        <div class="subtle">${DB.meta.ultimo_respaldo ? `Han pasado ${dias} días desde tu último respaldo.` : 'Todavía no has exportado ningún respaldo.'} ¿Deseas exportar uno ahora?</div>
+      </div>
+    ` : ''}
     <div class="card">
       <div style="font-weight:700;margin-bottom:6px;">Nombre del negocio</div>
       <div class="subtle" style="margin-bottom:10px;">Aparece en el encabezado del reporte ejecutivo.</div>
@@ -2959,6 +3099,16 @@ function renderRespaldos(content){
       <div class="subtle" style="margin-bottom:14px;">Fusiona un respaldo con los datos actuales sin borrar nada.</div>
       <input type="file" id="rp-file" accept="application/json" style="display:none;">
       <button class="btn btn-outline btn-block" id="rp-import">⬆️ Importar desde archivo JSON (fusionar)</button>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:6px;">Historial</div>
+      <div class="subtle" style="margin-bottom:14px;">Archiva registros antiguos para aligerar la vista de los historiales, sin borrar nada ni afectar el balance.</div>
+      <button class="btn btn-outline btn-block" id="rp-archivar" style="margin-bottom:10px;">🧹 Archivar historial</button>
+      <button class="btn btn-outline btn-block" id="rp-ver-archivados">👁️ Ver historial archivado</button>
+    </div>
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:6px;">Base de datos</div>
+      <div class="subtle">Tamaño actual: <strong>${fmtBytes(tamanioBaseDatosBytes())}</strong> · Almacenamiento: ${dbBackend==='indexeddb'?'IndexedDB':'localStorage (respaldo)'}</div>
     </div>
     <div class="subtle" style="text-align:center;margin-top:10px;">Los datos se guardan localmente en este dispositivo.</div>
   `;
@@ -2981,7 +3131,10 @@ function renderRespaldos(content){
     a.href = url; a.download = name;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    DB.meta.ultimo_respaldo = Date.now();
+    save();
     toast('Respaldo exportado: ' + name);
+    renderRespaldos(content);
   };
 
   document.getElementById('rp-import').onclick = ()=>{
@@ -3009,6 +3162,137 @@ function renderRespaldos(content){
     };
     reader.readAsText(file);
   });
+
+  document.getElementById('rp-archivar').onclick = ()=>openArchivarHistorialModal(()=>renderRespaldos(content));
+  document.getElementById('rp-ver-archivados').onclick = openVerArchivadosModal;
+}
+
+/* ---------------------------------------------------------------------- *
+ * 21. ARCHIVAR HISTORIAL (no borra datos; solo los oculta de las listas)
+ * ---------------------------------------------------------------------- */
+const ARCHIVABLES = [
+  {key:'envios',  label:'Envíos',  origen:'envio'},
+  {key:'compras', label:'Compras', origen:'compra'},
+  {key:'ventas',  label:'Ventas',  origen:'venta'},
+  {key:'gastos',  label:'Gastos',  origen:null},
+  {key:'in_out',  label:'In/Out',  origen:null},
+];
+
+function tieneDeudaPendiente(origen, id){
+  if(!origen) return false;
+  return DB.deudas.some(d => d.origen===origen && d.origen_id===id && d.estado==='pendiente');
+}
+
+function openArchivarHistorialModal(onDone){
+  openModal(`
+    <div class="modal-title">🧹 Archivar historial</div>
+    <div class="modal-msg">No se elimina ningún dato: los registros archivados dejan de mostrarse en los historiales, pero el balance y las deudas siguen funcionando igual.</div>
+    <label class="field-label">¿Qué archivar?</label>
+    ${ARCHIVABLES.map(a=>`
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14.5px;font-weight:600;">
+        <input type="checkbox" class="ah-check" data-key="${a.key}" checked style="width:18px;height:18px;">
+        ${a.label}
+      </label>
+    `).join('')}
+    <label class="field-label">Archivar registros anteriores a</label>
+    <input type="date" id="ah-fecha" value="${new Date().toISOString().slice(0,10)}">
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="ah-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="ah-ok">Archivar</button>
+    </div>
+  `);
+  document.getElementById('ah-cancel').onclick = closeModal;
+  document.getElementById('ah-ok').onclick = ()=>{
+    const seleccionadas = Array.from(document.querySelectorAll('.ah-check')).filter(c=>c.checked).map(c=>c.dataset.key);
+    const fechaVal = document.getElementById('ah-fecha').value;
+    if(!seleccionadas.length || !fechaVal){ toast('Seleccione al menos un tipo y una fecha.'); return; }
+    const limite = new Date(fechaVal).getTime() + 86399999; // fin del día seleccionado
+    closeModal();
+    confirmDialog(
+      `Se archivarán los registros seleccionados anteriores a ${fmtDateShort(limite)}. No se eliminará ningún dato y el balance no se verá afectado. ¿Continuar?`,
+      ()=>{
+        let archivados = 0, omitidos = 0;
+        ARCHIVABLES.forEach(a=>{
+          if(!seleccionadas.includes(a.key)) return;
+          DB[a.key].forEach(r=>{
+            if(r.archivado) return;
+            if(r.fecha_hora >= limite) return;
+            if(tieneDeudaPendiente(a.origen, r.id)){ omitidos++; return; }
+            r.archivado = true;
+            r.archivado_en = Date.now();
+            archivados++;
+          });
+        });
+        save();
+        let msg = `${archivados} registro(s) archivado(s).`;
+        if(omitidos) msg += ` ${omitidos} registro(s) no fueron archivados porque tienen deudas pendientes asociadas.`;
+        alertDialog('Archivado completado', msg);
+        onDone && onDone();
+      },
+      {okLabel:'Archivar', cancelLabel:'Cancelar', danger:false}
+    );
+  };
+}
+
+function movimientosArchivados(){
+  const mov = [];
+  DB.envios.filter(e=>e.archivado).forEach(e=>{
+    mov.push({fecha:e.fecha_hora, tipo:'Envío', key:'envios', id:e.id, concepto:`${entityNameForEnvio(e)} — ${fmtMoney(e.cantidad_enviada)} ${e.moneda}`});
+  });
+  DB.compras.filter(c=>c.archivado).forEach(c=>{
+    mov.push({fecha:c.fecha_hora, tipo:'Compra', key:'compras', id:c.id, concepto:`${fmtMoney(c.cantidad_pagada)} ${c.divisa_pagada} → ${fmtMoney(c.cantidad_comprada)} ${c.divisa_comprada}`});
+  });
+  DB.ventas.filter(v=>v.archivado).forEach(v=>{
+    mov.push({fecha:v.fecha_hora, tipo:'Venta', key:'ventas', id:v.id, concepto:`${fmtMoney(v.cantidad_vendida)} ${v.divisa_vendida} → ${fmtMoney(v.cantidad_recibida)} ${v.divisa_recibida}`});
+  });
+  DB.gastos.filter(g=>g.archivado).forEach(g=>{
+    mov.push({fecha:g.fecha_hora, tipo:'Gasto', key:'gastos', id:g.id, concepto:`${escapeHtml(g.concepto)} — ${fmtMoney(g.cantidad)} ${g.divisa}`});
+  });
+  DB.in_out.filter(io=>io.archivado).forEach(io=>{
+    mov.push({fecha:io.fecha_hora, tipo:'In/Out', key:'in_out', id:io.id, concepto:`${io.tipo==='entrada'?'Entrada':'Salida'} — ${fmtMoney(io.cantidad)} ${io.divisa}`});
+  });
+  return mov.sort((a,b)=>b.fecha-a.fecha);
+}
+
+function desarchivarRegistro(key, id){
+  const r = (DB[key]||[]).find(x=>x.id===id);
+  if(!r) return;
+  r.archivado = false;
+  save();
+}
+
+function openVerArchivadosModal(){
+  function render(){
+    const items = movimientosArchivados();
+    openModal(`
+      <div class="modal-title">👁️ Historial archivado</div>
+      <div class="modal-msg">Solo lectura — ${items.length} registro(s) archivado(s). Puede desarchivar uno si fue un error.</div>
+      <div style="max-height:55vh;overflow-y:auto;">
+        ${items.length ? items.map(m=>`
+          <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:10px 12px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+              <div style="min-width:0;">
+                <div style="font-weight:700;font-size:14px;">${escapeHtml(m.tipo)}</div>
+                <div class="subtle">${escapeHtml(m.concepto)}</div>
+                <div class="subtle">${fmtDate(m.fecha)}</div>
+              </div>
+              <button class="btn btn-outline btn-sm va-restaurar" data-key="${m.key}" data-id="${m.id}" style="flex:none;">↩️ Desarchivar</button>
+            </div>
+          </div>
+        `).join('') : emptyState('📭','No hay registros archivados todavía.')}
+      </div>
+      <div class="modal-actions"><button class="btn btn-outline btn-block" id="va-cerrar">Cerrar</button></div>
+    `);
+    document.getElementById('va-cerrar').onclick = closeModal;
+    document.querySelectorAll('.va-restaurar').forEach(btn=>{
+      btn.onclick = ()=>{
+        desarchivarRegistro(btn.dataset.key, Number(btn.dataset.id));
+        toast('Registro desarchivado');
+        render();
+      };
+    });
+  }
+  render();
 }
 
 function mergeImport(incoming){
@@ -3638,7 +3922,7 @@ function generarReporteEjecutivo(){
   rows.push([sb('Últimos 10 movimientos')]);
   rows.push([sb('Fecha'), sb('Tipo'), sb('Concepto'), sb('Divisa'), sb('Monto')]);
   const movimientos = [];
-  DB.envios.forEach(e=>{
+  DB.envios.filter(e=>!e.archivado).forEach(e=>{
     const entrega = Number(e.cantidad_pagada||0);
     const ganancia = Number(e.ganancia||0);
     if(envioDescuentaAhora(e)){
@@ -3657,16 +3941,16 @@ function generarReporteEjecutivo(){
       movimientos.push({fecha:d.fecha_cierre, tipo:'Envío pagado', concepto:`Pago a ${d.persona}`, divisa:d.divisa, monto:-(d.monto||0)});
     }
   });
-  DB.compras.forEach(c=>{
+  DB.compras.filter(c=>!c.archivado).forEach(c=>{
     movimientos.push({fecha:c.fecha_hora, tipo:'Compra', concepto:`${fmtMoney(c.cantidad_pagada)} ${c.divisa_pagada} → ${c.divisa_comprada}`, divisa:c.divisa_comprada, monto:c.cantidad_comprada});
   });
-  DB.ventas.forEach(v=>{
+  DB.ventas.filter(v=>!v.archivado).forEach(v=>{
     movimientos.push({fecha:v.fecha_hora, tipo:'Venta', concepto:`${fmtMoney(v.cantidad_vendida)} ${v.divisa_vendida} → ${v.divisa_recibida}`, divisa:v.divisa_recibida, monto:v.registra_deuda?0:v.cantidad_recibida});
   });
-  DB.gastos.forEach(g=>{
+  DB.gastos.filter(g=>!g.archivado).forEach(g=>{
     movimientos.push({fecha:g.fecha_hora, tipo:'Gasto', concepto:g.concepto, divisa:g.divisa, monto:-g.cantidad});
   });
-  DB.in_out.forEach(io=>{
+  DB.in_out.filter(io=>!io.archivado).forEach(io=>{
     movimientos.push({fecha:io.fecha_hora, tipo:'In/Out', concepto: io.nota || (io.tipo==='entrada'?'Entrada manual':'Salida manual'), divisa:io.divisa, monto: io.tipo==='entrada'?io.cantidad:-io.cantidad});
   });
   movimientos.sort((a,b)=>b.fecha-a.fecha).slice(0,10).forEach(m=>{

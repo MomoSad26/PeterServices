@@ -2955,9 +2955,13 @@ function volverDesdeEnvioDetalle(){
   }
 }
 
+let historialDivisaScrollMemo = 0; // preserva el scroll DENTRO del historial por divisa (su propia lista interna)
+
 function openHistorialDivisa(nombre){
   historialDivisaFiltro = 'todos';
   const movimientos = movimientosDeDivisa(nombre);
+  const scrollAlAbrir = historialDivisaScrollMemo;
+  historialDivisaScrollMemo = 0;
 
   openModal(`
     <div class="modal-title">Historial — ${escapeHtml(nombre)}</div>
@@ -2994,6 +2998,7 @@ function openHistorialDivisa(nombre){
       card.onclick = ()=>{
         const m = items[Number(card.dataset.i)];
         if(m){
+          historialDivisaScrollMemo = el.scrollTop;
           retornoHistorialDivisa = nombre;
           irADetalleOriginal(m.origen, m.origenId);
         }
@@ -3009,8 +3014,12 @@ function openHistorialDivisa(nombre){
       refresh();
     };
   });
-  document.getElementById('hd-cerrar').onclick = closeModal;
+  document.getElementById('hd-cerrar').onclick = ()=>{ historialDivisaScrollMemo = 0; closeModal(); };
   refresh();
+  if(scrollAlAbrir){
+    const el = document.getElementById('hd-list');
+    requestAnimationFrame(()=>{ requestAnimationFrame(()=>{ el.scrollTop = scrollAlAbrir; }); });
+  }
 }
 
 function irADetalleOriginal(origen, origenId){

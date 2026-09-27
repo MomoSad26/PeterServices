@@ -3497,6 +3497,7 @@ function eliminarDeudaAutomaticaSiPendiente(origen, origen_id){
 }
 
 let deudasTab = 'pagar_a';
+let deudasOrden = 'fecha'; // 'fecha' | 'az' — persiste al cambiar de pestaña dentro de Deudas
 
 function renderDeudas(content){
   content.innerHTML = `
@@ -3506,9 +3507,17 @@ function renderDeudas(content){
       <div class="tab ${deudasTab==='me_deben'?'active':''}" data-v="me_deben">Me deben: <span class="tab-count" id="deudas-count-cobrar">0</span></div>
       <div class="tab ${deudasTab==='historial'?'active':''}" data-v="historial">Historial</div>
     </div>
+    <div class="chip-row" id="deudas-orden">
+      <div class="chip ${deudasOrden==='fecha'?'active':''}" data-v="fecha">📅 Por fecha</div>
+      <div class="chip ${deudasOrden==='az'?'active':''}" data-v="az">🔤 A-Z</div>
+    </div>
     <div id="deudas-list"></div>
     ${deudasTab!=='historial' ? `<button class="fab" id="fab-add-deuda" aria-label="Agregar">+</button>` : ''}
   `;
+
+  function ordenarPorPersona(lista){
+    return lista.slice().sort((a,b)=> String(a.persona||'').localeCompare(String(b.persona||''), 'es', {sensitivity:'base'}));
+  }
 
   function refresh(){
     const el = document.getElementById('deudas-list');
@@ -3518,13 +3527,13 @@ function renderDeudas(content){
     document.getElementById('deudas-count-cobrar').textContent = cobrarCount;
     let items;
     if(deudasTab==='historial'){
-      items = DB.deudas.filter(d=>d.estado==='pagado'||d.estado==='cobrado')
-        .sort((a,b)=>(b.fecha_cierre||0)-(a.fecha_cierre||0));
+      items = DB.deudas.filter(d=>d.estado==='pagado'||d.estado==='cobrado');
+      items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.fecha_cierre||0)-(a.fecha_cierre||0));
       el.innerHTML = items.length ? items.map(deudaHistorialRowHtml).join('') :
         emptyState('🗂️','Aún no hay registros pagados o cobrados');
     } else {
-      items = DB.deudas.filter(d=>d.tipo===deudasTab && d.estado==='pendiente')
-        .sort((a,b)=>(b.creado_en||b.fecha)-(a.creado_en||a.fecha));
+      items = DB.deudas.filter(d=>d.tipo===deudasTab && d.estado==='pendiente');
+      items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.creado_en||b.fecha)-(a.creado_en||a.fecha));
       el.innerHTML = items.length ? items.map(deudaRowHtml).join('') :
         emptyState(deudasTab==='pagar_a'?'💸':'🤝', deudasTab==='pagar_a' ? 'No hay deudas pendientes por pagar' : 'No hay registros pendientes por cobrar');
     }
@@ -3536,6 +3545,14 @@ function renderDeudas(content){
     t.onclick = ()=>{
       deudasTab = t.dataset.v;
       renderDeudas(content);
+    };
+  });
+  document.querySelectorAll('#deudas-orden .chip').forEach(c=>{
+    c.onclick = ()=>{
+      deudasOrden = c.dataset.v;
+      document.querySelectorAll('#deudas-orden .chip').forEach(x=>x.classList.remove('active'));
+      c.classList.add('active');
+      refresh();
     };
   });
   const fab = document.getElementById('fab-add-deuda');

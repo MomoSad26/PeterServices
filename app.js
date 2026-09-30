@@ -218,6 +218,23 @@ function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
+/* Normaliza texto para búsquedas "a prueba de balas": ignora mayúsculas/
+   minúsculas, tildes y otros diacríticos, y espacios de más (al inicio, al
+   final o repetidos en medio). Se usa en TODOS los buscadores de la app
+   (clientes, trabajadores, selector de envío, historial de envíos) para que
+   "Ruben", "ruben ", " RUBÉN" o "rub" encuentren siempre a "Rubén". */
+function normalizarTexto(str){
+  return String(str||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+function coincideBusqueda(texto, termino){
+  if(!termino) return true;
+  return normalizarTexto(texto).includes(normalizarTexto(termino));
+}
+
 function initials(name){
   if(!name) return '?';
   const clean = name.replace(/[^\p{L}\p{N} ]/gu,'').trim();
@@ -414,13 +431,13 @@ function openEntityPicker(modo, onPick){
   const trabajadoresActivos = DB.trabajadores.filter(t=>t.activo).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
 
   function renderList(filter){
-    const f = (filter||'').toLowerCase();
+    const f = filter||'';
     let items = [];
     if(modo==='cliente' || modo==='combinado'){
-      items = items.concat(clientesActivos.filter(c=>c.nombre.toLowerCase().includes(f)).map(c=>({...c, __tipo:'cliente'})));
+      items = items.concat(clientesActivos.filter(c=>coincideBusqueda(c.nombre, f)).map(c=>({...c, __tipo:'cliente'})));
     }
     if(modo==='trabajador' || modo==='combinado'){
-      items = items.concat(trabajadoresActivos.filter(t=>t.nombre.toLowerCase().includes(f)).map(t=>({...t, __tipo:'trabajador'})));
+      items = items.concat(trabajadoresActivos.filter(t=>coincideBusqueda(t.nombre, f)).map(t=>({...t, __tipo:'trabajador'})));
     }
     if(items.length===0){
       return `<div class="empty-state"><div class="ei">🔍</div>Sin resultados</div>`;
@@ -583,7 +600,6 @@ function route(){
     case 'trabajadores': renderTrabajadoresList(content); break;
     case 'trabajador-detalle': renderTrabajadorDetalle(content, Number(param)); break;
     case 'envio-trabajador': renderEnvioTrabajadorForm(content, Number(param)); break;
-    case 'precio-especial': renderPrecioEspecialForm(content); break;
     case 'historial': renderHistorial(content, param); break;
     case 'envio-detalle': renderEnvioDetalle(content, Number(param)); break;
     case 'ventas': renderVentasList(content); break;
@@ -639,7 +655,7 @@ function renderClientesList(content, searchTerm){
   searchTerm = searchTerm || '';
   const items = DB.clientes
     .filter(c=>c.activo)
-    .filter(c=>c.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(c=>coincideBusqueda(c.nombre, searchTerm))
     .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
 
   content.innerHTML = `
@@ -690,7 +706,7 @@ function renderClientesList(content, searchTerm){
 function renderClienteListInner(searchTerm){
   searchTerm = searchTerm || '';
   const items = DB.clientes.filter(c=>c.activo)
-    .filter(c=>c.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(c=>coincideBusqueda(c.nombre, searchTerm))
     .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
   return items.length ? items.map(clienteRowHtml).join('') : emptyState('👤','Aún no hay clientes registrados');
 }
@@ -1078,7 +1094,7 @@ function renderTrabajadoresList(content){
 function renderTrabajadorListInner(searchTerm){
   searchTerm = searchTerm||'';
   const items = DB.trabajadores.filter(t=>t.activo)
-    .filter(t=>t.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(t=>coincideBusqueda(t.nombre, searchTerm))
     .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
   return items.length ? items.map(t=>`
     <div class="list-item" data-id="${t.id}">
@@ -1352,8 +1368,8 @@ function applyHistorialFilters(list){
   return list.filter(e=>{
     if(e.archivado) return false;
     if(f.q){
-      const name = entityNameForEnvio(e).toLowerCase();
-      if(!name.includes(f.q.toLowerCase())) return false;
+      const name = entityNameForEnvio(e);
+      if(!coincideBusqueda(name, f.q)) return false;
     }
     if(f.tipo==='Clientes' && e.tipo!=='cliente_directo') return false;
     if(f.tipo==='Trabajadores' && e.tipo!=='trabajador') return false;

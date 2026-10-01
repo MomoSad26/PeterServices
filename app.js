@@ -147,13 +147,44 @@ async function loadDBAsync(){
   }
 }
 
+let escriturasPendientes = 0;
+function actualizarIndicadorGuardado(){
+  let el = document.getElementById('save-indicator');
+  if(escriturasPendientes > 0){
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'save-indicator';
+      el.style.cssText = 'position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:10px;z-index:150;background:rgba(15,61,62,.9);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none;';
+      el.textContent = '💾 Guardando…';
+      document.body.appendChild(el);
+    }
+  } else if(el){
+    el.remove();
+  }
+}
+// Si el usuario cierra o navega fuera justo cuando aún hay una escritura en
+// curso hacia IndexedDB (persist() es asíncrono), se le avisa para evitar
+// perder ese último cambio.
+window.addEventListener('beforeunload', (e)=>{
+  if(escriturasPendientes > 0){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 function persist(dbObj){
   const data = dbObj || DB;
   if(dbBackend === 'indexeddb'){
+    escriturasPendientes++;
+    const avisoLento = setTimeout(actualizarIndicadorGuardado, 150); // evita parpadeo en guardados rápidos (lo normal)
     idbSet(DB_KEY, data).catch(e=>{
       console.error('Error guardando en IndexedDB, se usa localStorage como respaldo', e);
       dbBackend = 'localstorage';
       try{ localStorage.setItem(DB_KEY, JSON.stringify(data)); }catch(e2){ console.error('Error guardando datos', e2); }
+    }).finally(()=>{
+      clearTimeout(avisoLento);
+      escriturasPendientes = Math.max(0, escriturasPendientes-1);
+      actualizarIndicadorGuardado();
     });
   } else {
     try{ localStorage.setItem(DB_KEY, JSON.stringify(data)); }catch(e){ console.error('Error guardando datos', e); }
@@ -172,9 +203,22 @@ function fmtBytes(bytes){
 }
 
 function nextId(tabla){
-  const id = DB.seq[tabla] || 1;
+  let id = DB.seq[tabla] || 1;
+  // Autocorrección: si por una importación o un dato corrupto el contador
+  // quedó desactualizado, nunca se reutiliza un id que ya exista en la tabla.
+  const arr = DB[tabla];
+  if(Array.isArray(arr)){
+    for(const r of arr){
+      if(r && typeof r.id==='number' && r.id>=id) id = r.id+1;
+    }
+  }
   DB.seq[tabla] = id + 1;
   return id;
+}
+
+function numFinito(v, fallback=0){
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -211,6 +255,18 @@ function fmtDateShort(ts){
   const dd = String(d.getDate()).padStart(2,'0');
   const mm = String(d.getMonth()+1).padStart(2,'0');
   return `${dd}/${mm}/${String(d.getFullYear()).slice(2)}`;
+}
+// Para el value="" de <input type="date">. OJO: nunca usar
+// toISOString().slice(0,10) para esto — toISOString() convierte a UTC
+// primero, así que en zonas horarias negativas (ej. Cuba/Miami, UTC-4/UTC-5)
+// durante las últimas horas del día muestra el día SIGUIENTE por error.
+// Esto arma la fecha a partir de los componentes LOCALES.
+function fechaLocalISO(fechaOrTs){
+  const d = fechaOrTs===undefined ? new Date() : (fechaOrTs instanceof Date ? fechaOrTs : new Date(fechaOrTs));
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
 
 function escapeHtml(str){
@@ -275,8 +331,20 @@ function findDivisa(nombre){
 function adjustBalance(divisaNombre, delta){
   if(!divisaNombre || !delta) return;
   const d = findDivisa(divisaNombre);
-  if(!d) return;
+  if(!d){
+    console.warn(`adjustBalance: la divisa "${divisaNombre}" no existe — el balance no se pudo actualizar.`);
+    return;
+  }
   d.saldo = round2(d.saldo + delta);
+}
+
+function divisaTieneRegistrosAsociados(nombre){
+  return DB.envios.some(e=>e.divisa_entrega===nombre || e.divisa_ganancia===nombre) ||
+    DB.ventas.some(v=>v.divisa_vendida===nombre || v.divisa_recibida===nombre) ||
+    DB.compras.some(c=>c.divisa_comprada===nombre || c.divisa_pagada===nombre) ||
+    DB.gastos.some(g=>g.divisa===nombre) ||
+    DB.in_out.some(io=>io.divisa===nombre) ||
+    DB.deudas.some(d=>d.divisa===nombre);
 }
 
 function envioDescuentaAhora(e){
@@ -394,6 +462,13 @@ function openModal(html, {center=false} = {}){
     if(e.target.id === 'modal-backdrop') closeModal();
   });
 }
+// Permite cerrar cualquier modal con la tecla Escape (un solo listener para
+// toda la app, no uno por cada modal que se abre).
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Escape') return;
+  const root = document.getElementById('modal-root');
+  if(root && root.innerHTML.trim()) closeModal();
+});
 
 function confirmDialog(msg, onConfirm, opts={}){
   const okLabel = opts.okLabel || 'Eliminar';
@@ -417,10 +492,6 @@ function alertDialog(title, msg){
     <div class="modal-actions"><button class="btn btn-primary btn-block" id="ad-ok">Entendido</button></div>
   `, {center:true});
   document.getElementById('ad-ok').onclick = closeModal;
-}
-
-function confirmDiscard(onDiscard){
-  confirmDialog('Tiene cambios sin guardar. ¿Desea descartarlos?', onDiscard, {okLabel:'Descartar', cancelLabel:'Seguir editando'});
 }
 
 /* ---------------------------------------------------------------------- *
@@ -461,6 +532,7 @@ function openEntityPicker(modo, onPick){
       <input type="text" id="picker-search" placeholder="Buscar por nombre..." autocomplete="off">
     </div>
     ${(modo==='cliente'||modo==='combinado') ? `<button class="btn btn-outline btn-block" id="picker-new-cliente" style="margin-bottom:10px;">➕ Nuevo cliente</button>` : ''}
+    ${(modo==='trabajador'||modo==='combinado') ? `<button class="btn btn-outline btn-block" id="picker-new-trabajador" style="margin-bottom:10px;">➕ Nuevo trabajador</button>` : ''}
     <div id="picker-list">${renderList('')}</div>
   `);
 
@@ -486,6 +558,14 @@ function openEntityPicker(modo, onPick){
     newBtn.onclick = ()=>{
       openClienteFormModal(null, (cliente)=>{
         onPick(cliente, 'cliente');
+      });
+    };
+  }
+  const newBtnTr = document.getElementById('picker-new-trabajador');
+  if(newBtnTr){
+    newBtnTr.onclick = ()=>{
+      openTrabajadorFormModal(null, (trabajador)=>{
+        onPick(trabajador, 'trabajador');
       });
     };
   }
@@ -642,8 +722,43 @@ async function bootstrap(){
   if(!location.hash) location.hash = '#/balance';
   route();
   if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
+    navigator.serviceWorker.register('sw.js').then(registrarAvisoDeActualizacion).catch(()=>{});
   }
+}
+
+/* Avisa al usuario cuando hay una versión nueva de la app lista, en vez de
+   reemplazar los archivos en uso sin avisar (lo que podía dejar la pantalla
+   a medio actualizar). El usuario decide cuándo recargar. */
+function registrarAvisoDeActualizacion(reg){
+  function avisar(worker){
+    if(!worker) return;
+    worker.addEventListener('statechange', ()=>{
+      if(worker.state === 'installed' && navigator.serviceWorker.controller){
+        mostrarBannerActualizacion(()=>{
+          worker.postMessage({type:'SKIP_WAITING'});
+        });
+      }
+    });
+  }
+  if(reg.waiting && navigator.serviceWorker.controller){
+    mostrarBannerActualizacion(()=> reg.waiting.postMessage({type:'SKIP_WAITING'}));
+  }
+  reg.addEventListener('updatefound', ()=> avisar(reg.installing));
+  let recargando = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(recargando) return;
+    recargando = true;
+    location.reload();
+  });
+}
+function mostrarBannerActualizacion(onUpdate){
+  if(document.getElementById('update-banner')) return;
+  const div = document.createElement('div');
+  div.id = 'update-banner';
+  div.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:200;background:var(--teal-900);color:#fff;padding:12px 14px;border-radius:12px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-size:13.5px;';
+  div.innerHTML = `<span style="flex:1;">🔄 Hay una nueva versión de la app lista.</span><button class="btn btn-gold btn-sm" id="update-banner-btn">Actualizar</button>`;
+  document.body.appendChild(div);
+  document.getElementById('update-banner-btn').onclick = ()=>{ div.remove(); onUpdate(); };
 }
 
 document.addEventListener('DOMContentLoaded', bootstrap);
@@ -754,18 +869,26 @@ function openClienteFormModal(clienteId, onSaved){
     if(!pais || pais==='__add__'){ errEl.textContent = 'El país es obligatorio.'; errEl.style.display='block'; return; }
     const telefono = document.getElementById('cf-tel').value.trim();
     const notas = document.getElementById('cf-notas').value.trim();
-    let cliente;
-    if(editing){
-      editing.nombre = nombre; editing.pais = pais; editing.telefono = telefono; editing.notas = notas;
-      cliente = editing;
-    } else {
-      cliente = {id:nextId('clientes'), nombre, pais, telefono, notas, fecha_registro:Date.now(), activo:1};
-      DB.clientes.push(cliente);
+    const guardar = ()=>{
+      let cliente;
+      if(editing){
+        editing.nombre = nombre; editing.pais = pais; editing.telefono = telefono; editing.notas = notas;
+        cliente = editing;
+      } else {
+        cliente = {id:nextId('clientes'), nombre, pais, telefono, notas, fecha_registro:Date.now(), activo:1};
+        DB.clientes.push(cliente);
+      }
+      save();
+      closeModal();
+      toast(editing? 'Cliente actualizado' : 'Cliente agregado');
+      onSaved && onSaved(cliente);
+    };
+    const duplicado = !editing && DB.clientes.find(c=>c.activo && c.pais===pais && normalizarTexto(c.nombre)===normalizarTexto(nombre));
+    if(duplicado){
+      confirmDialog(`Ya existe un cliente llamado "${escapeHtml(duplicado.nombre)}" en ${escapeHtml(pais)}. ¿Deseas registrarlo de todas formas?`, guardar, {okLabel:'Registrar igual', cancelLabel:'Cancelar', danger:false});
+      return;
     }
-    save();
-    closeModal();
-    toast(editing? 'Cliente actualizado' : 'Cliente agregado');
-    onSaved && onSaved(cliente);
+    guardar();
   };
 }
 
@@ -1404,8 +1527,8 @@ function renderHistorial(content, presetParam){
       ${['Hoy','Semanal','Mensual','Personalizado','Todo'].map(t=>`<div class="chip ${historialFilters.fecha===t?'active':''}" data-v="${t}">${t}</div>`).join('')}
     </div>
     <div id="h-custom-range" class="two-col" style="margin-bottom:12px;display:${historialFilters.fecha==='Personalizado'?'grid':'none'};">
-      <input type="date" id="h-desde" value="${historialFilters.fechaDesde? new Date(historialFilters.fechaDesde).toISOString().slice(0,10):''}">
-      <input type="date" id="h-hasta" value="${historialFilters.fechaHasta? new Date(historialFilters.fechaHasta).toISOString().slice(0,10):''}">
+      <input type="date" id="h-desde" value="${historialFilters.fechaDesde? fechaLocalISO(historialFilters.fechaDesde):''}">
+      <input type="date" id="h-hasta" value="${historialFilters.fechaHasta? fechaLocalISO(historialFilters.fechaHasta):''}">
     </div>
     <div class="two-col" style="margin-bottom:12px;">
       <select id="h-forma" class="picker">
@@ -2665,8 +2788,8 @@ function renderBalance(content){
       ${['Hoy','Semanal','Mensual','Anual','Personalizado'].map(p=>`<div class="chip ${balancePeriod===p?'active':''}" data-v="${p}">${p}</div>`).join('')}
     </div>
     <div id="b-custom-range" class="two-col" style="display:${balancePeriod==='Personalizado'?'grid':'none'};margin-bottom:12px;">
-      <input type="date" id="b-desde" value="${balanceCustomDesde? new Date(balanceCustomDesde).toISOString().slice(0,10):''}">
-      <input type="date" id="b-hasta" value="${balanceCustomHasta? new Date(balanceCustomHasta).toISOString().slice(0,10):''}">
+      <input type="date" id="b-desde" value="${balanceCustomDesde? fechaLocalISO(balanceCustomDesde):''}">
+      <input type="date" id="b-hasta" value="${balanceCustomHasta? fechaLocalISO(balanceCustomHasta):''}">
     </div>
     <div class="bal-grid" id="b-filtered"></div>
 
@@ -2780,6 +2903,10 @@ function openEliminarDivisaModal(onDone){
       if(!d) return;
       if(round2(d.saldo) !== 0){
         alertDialog('No se puede eliminar', `No se puede eliminar la divisa ${escapeHtml(nombre)} porque tiene un saldo de ${fmtMoney(d.saldo)}. Para eliminarla, primero debe ajustar el saldo a cero (ej: usando In/Out o editando manualmente el saldo).`);
+        return;
+      }
+      if(divisaTieneRegistrosAsociados(nombre)){
+        alertDialog('No se puede eliminar', `No se puede eliminar la divisa ${escapeHtml(nombre)} porque tiene envíos, ventas, compras, gastos, In/Out o deudas registrados con ella. Bórrala solo si estás seguro de que ningún historial la usa, o archiva esos registros primero.`);
         return;
       }
       confirmDialog(`¿Estás seguro de que deseas eliminar la divisa ${escapeHtml(nombre)}? Esta acción no se puede deshacer.`, ()=>{
@@ -2972,6 +3099,7 @@ function volverDesdeEnvioDetalle(){
 }
 
 let historialDivisaScrollPorDivisa = {}; // guarda el scroll interno de #hd-list, por nombre de divisa
+let historialDivisaFiltro = 'todos'; // (antes era una global implícita sin declarar)
 
 function openHistorialDivisa(nombre){
   historialDivisaFiltro = 'todos';
@@ -3095,6 +3223,15 @@ function editarSaldoDivisa(nombre, onDone){
 function diasDesde(ts){
   if(!ts) return Infinity;
   return Math.floor((Date.now()-ts)/86400000);
+}
+
+function fechaInputAFinDeDiaLocal(fechaStr){
+  // Un <input type="date"> entrega "YYYY-MM-DD". JS interpreta esas cadenas
+  // como medianoche UTC (no local), lo que en husos horarios negativos
+  // (ej. Cuba/Miami) corre el límite varias horas. Se arma a mano con
+  // componentes locales para que "fin del día" sea el fin del día real.
+  const [y,m,d] = fechaStr.split('-').map(Number);
+  return new Date(y, m-1, d, 23, 59, 59, 999).getTime();
 }
 
 function renderRespaldos(content){
@@ -3225,7 +3362,7 @@ function openArchivarHistorialModal(onDone){
       </label>
     `).join('')}
     <label class="field-label">Archivar registros anteriores a</label>
-    <input type="date" id="ah-fecha" value="${new Date().toISOString().slice(0,10)}">
+    <input type="date" id="ah-fecha" value="${fechaLocalISO()}">
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="ah-cancel">Cancelar</button>
       <button class="btn btn-primary btn-block" id="ah-ok">Archivar</button>
@@ -3236,7 +3373,7 @@ function openArchivarHistorialModal(onDone){
     const seleccionadas = Array.from(document.querySelectorAll('.ah-check')).filter(c=>c.checked).map(c=>c.dataset.key);
     const fechaVal = document.getElementById('ah-fecha').value;
     if(!seleccionadas.length || !fechaVal){ toast('Seleccione al menos un tipo y una fecha.'); return; }
-    const limite = new Date(fechaVal).getTime() + 86399999; // fin del día seleccionado
+    const limite = fechaInputAFinDeDiaLocal(fechaVal); // fin del día seleccionado (hora local)
     closeModal();
     confirmDialog(
       `Se archivarán los registros seleccionados anteriores a ${fmtDateShort(limite)}. No se eliminará ningún dato y el balance no se verá afectado. ¿Continuar?`,
@@ -3329,15 +3466,19 @@ function mergeImport(incoming){
   let insertados=0, actualizados=0, omitidos=0;
 
   (incoming.divisas||[]).forEach(d=>{
+    if(!d || !d.nombre) return;
     const local = DB.divisas.find(x=>x.nombre.toLowerCase()===d.nombre.toLowerCase());
     if(!local){
-      DB.divisas.push({id:nextId('divisas'), nombre:d.nombre, simbolo:d.simbolo||'', orden:d.orden||DB.divisas.length+1, saldo:d.saldo||0});
+      DB.divisas.push({id:nextId('divisas'), nombre:d.nombre, simbolo:d.simbolo||'', orden:numFinito(d.orden, DB.divisas.length+1), saldo:numFinito(d.saldo, 0)});
       insertados++;
-    } else if(local.saldo===0 && d.saldo){
-      local.saldo = d.saldo;
-      actualizados++;
+    } else {
+      if(local.saldo===0 && d.saldo){ local.saldo = numFinito(d.saldo, 0); actualizados++; }
+      if((local.orden===undefined || local.orden===null) && d.orden!=null) local.orden = numFinito(d.orden, DB.divisas.length+1);
     }
   });
+  if(incoming.meta && incoming.meta.nombre_negocio && !DB.meta.nombre_negocio){
+    DB.meta.nombre_negocio = String(incoming.meta.nombre_negocio).slice(0,100);
+  }
   (incoming.paises||[]).forEach(p=>{
     if(!DB.paises.find(x=>x.nombre.toLowerCase()===p.nombre.toLowerCase())){
       DB.paises.push({id:nextId('paises'), nombre:p.nombre, es_predefinido:0});
@@ -3353,6 +3494,7 @@ function mergeImport(incoming){
 
   const clienteIdMap = {};
   (incoming.clientes||[]).forEach(c=>{
+    if(!c || !c.nombre) return;
     let local = DB.clientes.find(x=>x.nombre.toLowerCase()===c.nombre.toLowerCase() && x.pais.toLowerCase()===(c.pais||'').toLowerCase());
     if(local){
       if(!local.telefono && c.telefono) local.telefono = c.telefono;
@@ -3368,6 +3510,7 @@ function mergeImport(incoming){
 
   const trabajadorIdMap = {};
   (incoming.trabajadores||[]).forEach(t=>{
+    if(!t || !t.nombre) return;
     let local = DB.trabajadores.find(x=>{
       if(x.telefono && t.telefono) return x.nombre.toLowerCase()===t.nombre.toLowerCase() && x.telefono===t.telefono;
       return x.nombre.toLowerCase()===t.nombre.toLowerCase();
@@ -3385,6 +3528,7 @@ function mergeImport(incoming){
 
   const envioIdMap = {};
   (incoming.envios||[]).forEach(e=>{
+    if(!e || !e.tipo) return;
     const localClienteId = e.cliente_id!=null ? clienteIdMap[e.cliente_id] : null;
     const localTrabajadorId = e.trabajador_id!=null ? trabajadorIdMap[e.trabajador_id] : null;
     const mismoSegundo = ts => Math.floor(ts/1000);
@@ -3398,7 +3542,10 @@ function mergeImport(incoming){
       x.forma_ganancia===e.forma_ganancia
     );
     if(dup){ omitidos++; envioIdMap[e.id] = dup.id; return; }
-    const nuevo = {...e, id:nextId('envios'), cliente_id:localClienteId, trabajador_id:localTrabajadorId};
+    const nuevo = {...e, id:nextId('envios'), cliente_id:localClienteId, trabajador_id:localTrabajadorId,
+      cantidad_enviada:numFinito(e.cantidad_enviada), precio:numFinito(e.precio),
+      cantidad_pagada:numFinito(e.cantidad_pagada), ganancia:numFinito(e.ganancia),
+      cotizado_a: (e.cotizado_a===null || e.cotizado_a===undefined) ? e.cotizado_a : numFinito(e.cotizado_a, 0)};
     DB.envios.push(nuevo);
     envioIdMap[e.id] = nuevo.id;
     insertados++;
@@ -3406,13 +3553,14 @@ function mergeImport(incoming){
 
   const ventaIdMap = {};
   (incoming.ventas||[]).forEach(v=>{
+    if(!v || !v.divisa_vendida || !v.divisa_recibida) return;
     const dup = DB.ventas.find(x =>
       x.cantidad_vendida===v.cantidad_vendida && x.divisa_vendida===v.divisa_vendida &&
       x.cantidad_recibida===v.cantidad_recibida && x.divisa_recibida===v.divisa_recibida &&
       x.fecha_hora===v.fecha_hora && (x.nota||'')===(v.nota||'')
     );
     if(dup){ omitidos++; ventaIdMap[v.id] = dup.id; return; }
-    const nuevaVenta = {...v, id:nextId('ventas')};
+    const nuevaVenta = {...v, id:nextId('ventas'), cantidad_vendida:numFinito(v.cantidad_vendida), cantidad_recibida:numFinito(v.cantidad_recibida)};
     DB.ventas.push(nuevaVenta);
     ventaIdMap[v.id] = nuevaVenta.id;
     insertados++;
@@ -3420,39 +3568,43 @@ function mergeImport(incoming){
 
   const compraIdMap = {};
   (incoming.compras||[]).forEach(c=>{
+    if(!c || !c.divisa_comprada || !c.divisa_pagada) return;
     const dup = DB.compras.find(x =>
       x.cantidad_comprada===c.cantidad_comprada && x.divisa_comprada===c.divisa_comprada &&
       x.cantidad_pagada===c.cantidad_pagada && x.divisa_pagada===c.divisa_pagada &&
       x.fecha_hora===c.fecha_hora && (x.nota||'')===(c.nota||'')
     );
     if(dup){ omitidos++; compraIdMap[c.id] = dup.id; return; }
-    const nuevaCompra = {...c, id:nextId('compras')};
+    const nuevaCompra = {...c, id:nextId('compras'), cantidad_comprada:numFinito(c.cantidad_comprada), cantidad_pagada:numFinito(c.cantidad_pagada)};
     DB.compras.push(nuevaCompra);
     compraIdMap[c.id] = nuevaCompra.id;
     insertados++;
   });
 
   (incoming.gastos||[]).forEach(g=>{
+    if(!g || !g.divisa) return;
     const dup = DB.gastos.find(x =>
       x.concepto===g.concepto && x.cantidad===g.cantidad && x.divisa===g.divisa &&
       x.fecha_hora===g.fecha_hora && (x.nota||'')===(g.nota||'')
     );
     if(dup){ omitidos++; return; }
-    DB.gastos.push({...g, id:nextId('gastos')});
+    DB.gastos.push({...g, id:nextId('gastos'), cantidad:numFinito(g.cantidad)});
     insertados++;
   });
 
   (incoming.in_out||[]).forEach(io=>{
+    if(!io || !io.divisa || !io.tipo) return;
     const dup = DB.in_out.find(x =>
       x.tipo===io.tipo && x.cantidad===io.cantidad && x.divisa===io.divisa &&
       x.fecha_hora===io.fecha_hora && (x.nota||'')===(io.nota||'')
     );
     if(dup){ omitidos++; return; }
-    DB.in_out.push({...io, id:nextId('in_out')});
+    DB.in_out.push({...io, id:nextId('in_out'), cantidad:numFinito(io.cantidad)});
     insertados++;
   });
 
   (incoming.deudas||[]).forEach(d=>{
+    if(!d || !d.persona || !d.divisa) return;
     const dup = DB.deudas.find(x =>
       x.tipo===d.tipo && x.persona===d.persona && x.monto===d.monto && x.divisa===d.divisa &&
       x.fecha===d.fecha && (x.nota||'')===(d.nota||'')
@@ -3462,7 +3614,7 @@ function mergeImport(incoming){
     if(d.origen==='venta' && ventaIdMap[d.origen_id]!==undefined) origen_id = ventaIdMap[d.origen_id];
     if(d.origen==='compra' && compraIdMap[d.origen_id]!==undefined) origen_id = compraIdMap[d.origen_id];
     if(d.origen==='envio' && envioIdMap[d.origen_id]!==undefined) origen_id = envioIdMap[d.origen_id];
-    DB.deudas.push({...d, id:nextId('deudas'), creado_en: d.creado_en || d.fecha, origen_id});
+    DB.deudas.push({...d, id:nextId('deudas'), creado_en: d.creado_en || d.fecha, origen_id, monto:numFinito(d.monto)});
     insertados++;
   });
 
@@ -3527,6 +3679,7 @@ function renderDeudas(content){
       <div class="chip ${deudasOrden==='fecha'?'active':''}" data-v="fecha">📅 Por fecha</div>
       <div class="chip ${deudasOrden==='az'?'active':''}" data-v="az">🔤 A-Z</div>
     </div>
+    <div id="deudas-totales"></div>
     <div id="deudas-list"></div>
     ${deudasTab!=='historial' ? `<button class="fab" id="fab-add-deuda" aria-label="Agregar">+</button>` : ''}
   `;
@@ -3542,13 +3695,25 @@ function renderDeudas(content){
     document.getElementById('deudas-count-pagar').textContent = pagarCount;
     document.getElementById('deudas-count-cobrar').textContent = cobrarCount;
     let items;
+    const totalesEl = document.getElementById('deudas-totales');
     if(deudasTab==='historial'){
+      totalesEl.innerHTML = '';
       items = DB.deudas.filter(d=>d.estado==='pagado'||d.estado==='cobrado');
       items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.fecha_cierre||0)-(a.fecha_cierre||0));
       el.innerHTML = items.length ? items.map(deudaHistorialRowHtml).join('') :
         emptyState('🗂️','Aún no hay registros pagados o cobrados');
     } else {
       items = DB.deudas.filter(d=>d.tipo===deudasTab && d.estado==='pendiente');
+      const porDivisa = {};
+      items.forEach(d=>{ porDivisa[d.divisa] = (porDivisa[d.divisa]||0) + Number(d.monto||0); });
+      const divisasConTotal = Object.keys(porDivisa);
+      totalesEl.innerHTML = divisasConTotal.length ? `
+        <div class="card" style="padding:12px 14px;margin-bottom:10px;">
+          <div class="subtle" style="margin-bottom:4px;">${deudasTab==='pagar_a'?'Total por pagar':'Total por cobrar'}</div>
+          <div style="font-weight:800;font-size:15px;color:var(--teal-800);">
+            ${divisasConTotal.map(dv=>`${fmtMoney(porDivisa[dv])} ${escapeHtml(dv)}`).join(' · ')}
+          </div>
+        </div>` : '';
       items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.creado_en||b.fecha)-(a.creado_en||a.fecha));
       el.innerHTML = items.length ? items.map(deudaRowHtml).join('') :
         emptyState(deudasTab==='pagar_a'?'💸':'🤝', deudasTab==='pagar_a' ? 'No hay deudas pendientes por pagar' : 'No hay registros pendientes por cobrar');
@@ -3644,7 +3809,7 @@ function openDeudaForm(tipo, onSaved){
     <label class="field-label">Divisa *</label>
     <select id="df-divisa" class="picker">${divisaOptionsHtml('')}</select>
     <label class="field-label">Fecha *</label>
-    <input type="date" id="df-fecha" value="${new Date().toISOString().slice(0,10)}">
+    <input type="date" id="df-fecha" value="${fechaLocalISO()}">
     ${esMeDeben ? `
       <label class="field-label">Tipo de registro</label>
       <div class="pill-row" id="df-afecta">

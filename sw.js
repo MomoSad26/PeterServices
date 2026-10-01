@@ -1,4 +1,4 @@
-const CACHE = 'remesas-v10';
+const CACHE = 'remesas-v11';
 const FILES = [
   './',
   './index.html',
@@ -10,8 +10,25 @@ const FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)));
-  self.skipWaiting();
+  // cache.addAll() es "todo o nada": si un solo archivo falla (ej. un ícono
+  // que no existe), toda la instalación fallaba y el modo offline no
+  // quedaba listo. Ahora cada archivo se cachea por separado, así uno que
+  // falle no arrastra a los demás.
+  e.waitUntil(
+    caches.open(CACHE).then(cache =>
+      Promise.all(FILES.map(url =>
+        cache.add(url).catch(err => console.warn('SW: no se pudo cachear', url, err))
+      ))
+    )
+    // Ya no se llama self.skipWaiting() aquí: la nueva versión se instala en
+    // segundo plano pero espera confirmación del usuario (ver app.js) antes
+    // de tomar el control, para no reemplazar archivos a mitad de una sesión
+    // en uso.
+  );
+});
+
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {

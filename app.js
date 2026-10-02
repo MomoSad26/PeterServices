@@ -338,13 +338,46 @@ function adjustBalance(divisaNombre, delta){
   d.saldo = round2(d.saldo + delta);
 }
 
-function divisaTieneRegistrosAsociados(nombre){
-  return DB.envios.some(e=>e.divisa_entrega===nombre || e.divisa_ganancia===nombre) ||
-    DB.ventas.some(v=>v.divisa_vendida===nombre || v.divisa_recibida===nombre) ||
-    DB.compras.some(c=>c.divisa_comprada===nombre || c.divisa_pagada===nombre) ||
-    DB.gastos.some(g=>g.divisa===nombre) ||
-    DB.in_out.some(io=>io.divisa===nombre) ||
-    DB.deudas.some(d=>d.divisa===nombre);
+// Cuenta SOLO los registros ACTIVOS (no archivados) que mencionan la divisa.
+// Estos son los que bloquean el borrado.
+function contarRegistrosActivosDeDivisa(nombre){
+  let n = 0;
+  n += DB.envios.filter(e=>!e.archivado && (e.divisa_entrega===nombre || e.divisa_ganancia===nombre)).length;
+  n += DB.ventas.filter(v=>!v.archivado && (v.divisa_vendida===nombre || v.divisa_recibida===nombre)).length;
+  n += DB.compras.filter(c=>!c.archivado && (c.divisa_comprada===nombre || c.divisa_pagada===nombre)).length;
+  n += DB.gastos.filter(g=>!g.archivado && g.divisa===nombre).length;
+  n += DB.in_out.filter(io=>!io.archivado && io.divisa===nombre).length;
+  // Las deudas no tienen campo "archivado": su equivalente de "activo" es
+  // estado 'pendiente' (una deuda ya pagada/cobrada es, en espíritu, historial).
+  n += DB.deudas.filter(d=>d.estado==='pendiente' && d.divisa===nombre).length;
+  return n;
+}
+// Cuenta los registros ARCHIVADOS que mencionan la divisa. Estos NO
+// bloquean el borrado: se eliminan junto con la divisa si el usuario confirma.
+function contarRegistrosArchivadosDeDivisa(nombre){
+  let n = 0;
+  n += DB.envios.filter(e=>e.archivado && (e.divisa_entrega===nombre || e.divisa_ganancia===nombre)).length;
+  n += DB.ventas.filter(v=>v.archivado && (v.divisa_vendida===nombre || v.divisa_recibida===nombre)).length;
+  n += DB.compras.filter(c=>c.archivado && (c.divisa_comprada===nombre || c.divisa_pagada===nombre)).length;
+  n += DB.gastos.filter(g=>g.archivado && g.divisa===nombre).length;
+  n += DB.in_out.filter(io=>io.archivado && io.divisa===nombre).length;
+  // Para deudas, el equivalente de "archivado" es estado 'pagado' o 'cobrado'.
+  n += DB.deudas.filter(d=>(d.estado==='pagado'||d.estado==='cobrado') && d.divisa===nombre).length;
+  return n;
+}
+// Elimina la divisa y, en la misma operación, todos los registros ARCHIVADOS
+// (o su equivalente: deudas ya pagadas/cobradas) que la mencionan. NUNCA
+// llama a adjustBalance: el saldo de ninguna otra divisa se toca. Un solo
+// save() al final.
+function eliminarDivisaYArchivadosAsociados(nombre){
+  DB.envios = DB.envios.filter(e=>!(e.archivado && (e.divisa_entrega===nombre || e.divisa_ganancia===nombre)));
+  DB.ventas = DB.ventas.filter(v=>!(v.archivado && (v.divisa_vendida===nombre || v.divisa_recibida===nombre)));
+  DB.compras = DB.compras.filter(c=>!(c.archivado && (c.divisa_comprada===nombre || c.divisa_pagada===nombre)));
+  DB.gastos = DB.gastos.filter(g=>!(g.archivado && g.divisa===nombre));
+  DB.in_out = DB.in_out.filter(io=>!(io.archivado && io.divisa===nombre));
+  DB.deudas = DB.deudas.filter(d=>!((d.estado==='pagado'||d.estado==='cobrado') && d.divisa===nombre));
+  DB.divisas = DB.divisas.filter(x=>x.nombre!==nombre);
+  save();
 }
 
 function envioDescuentaAhora(e){
@@ -2905,8 +2938,23 @@ function openEliminarDivisaModal(onDone){
         alertDialog('No se puede eliminar', `No se puede eliminar la divisa ${escapeHtml(nombre)} porque tiene un saldo de ${fmtMoney(d.saldo)}. Para eliminarla, primero debe ajustar el saldo a cero (ej: usando In/Out o editando manualmente el saldo).`);
         return;
       }
-      if(divisaTieneRegistrosAsociados(nombre)){
-        alertDialog('No se puede eliminar', `No se puede eliminar la divisa ${escapeHtml(nombre)} porque tiene envíos, ventas, compras, gastos, In/Out o deudas registrados con ella. Bórrala solo si estás seguro de que ningún historial la usa, o archiva esos registros primero.`);
+      const activos = contarRegistrosActivosDeDivisa(nombre);
+      if(activos > 0){
+        alertDialog('No se puede eliminar', `Esta divisa tiene ${activos} registro${activos===1?'':'s'} activo${activos===1?'':'s'} asociado${activos===1?'':'s'}. Archívelos primero si desea eliminarla.`);
+        return;
+      }
+      const archivados = contarRegistrosArchivadosDeDivisa(nombre);
+      if(archivados > 0){
+        const esSingular = archivados===1;
+        confirmDialog(
+          `Esta divisa tiene ${archivados} registro${esSingular?'':'s'} archivado${esSingular?'':'s'} asociado${esSingular?'':'s'}. Al eliminarla, ${esSingular?'ese registro también se eliminará':'esos registros también se eliminarán'} permanentemente del historial. Los saldos de las demás divisas no se modificarán. ¿Continuar?`,
+          ()=>{
+            eliminarDivisaYArchivadosAsociados(nombre);
+            toast(`Divisa eliminada junto con ${archivados} registro${esSingular?'':'s'} archivado${esSingular?'':'s'}`);
+            onDone && onDone();
+          },
+          {okLabel:'Eliminar', cancelLabel:'Cancelar', danger:true}
+        );
         return;
       }
       confirmDialog(`¿Estás seguro de que deseas eliminar la divisa ${escapeHtml(nombre)}? Esta acción no se puede deshacer.`, ()=>{

@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+  <!-- Para consultar en GitHub si hay una versión nueva de la app. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Solo Android 7–9: guardar el respaldo automático en Descargas/Remesas.
+       En Android 10+ no hace falta ningún permiso. -->
+  <uses-permission
+    android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    android:maxSdkVersion="28" />
+
   <application
     android:allowBackup="true"
     android:icon="@mipmap/ic_launcher"

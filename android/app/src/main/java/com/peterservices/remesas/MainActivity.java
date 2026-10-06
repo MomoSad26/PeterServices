@@ -1,11 +1,19 @@
 package com.peterservices.remesas;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -25,7 +33,12 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Contenedor nativo de la web de Remesas: la app corre en su propio WebView
@@ -38,6 +51,12 @@ public class MainActivity extends Activity {
   private static final int THEME_COLOR = Color.parseColor("#0F3D3E");
   private static final int REQ_PICK_FILE = 1;
   private static final int REQ_SAVE_FILE = 2;
+  private static final int REQ_PERMISO_ALMACENAMIENTO = 3;
+  // Respaldos automáticos: carpeta pública Descargas/Remesas (sobrevive a
+  // desinstalar la app) y cuántos se conservan.
+  private static final String CARPETA_RESPALDOS = "Remesas";
+  private static final String PREFIJO_AUTO = "respaldo_auto_";
+  private static final int MAX_RESPALDOS_AUTO = 8;
 
   // Los <a download> con URL blob: no funcionan en WebView; este script los
   // intercepta y entrega el archivo a Java para guardarlo con "Guardar como".
@@ -172,6 +191,53 @@ public class MainActivity extends Activity {
       });
     }
 
+    // Versión instalada (versionCode = número de la release, ej. 104).
+    @JavascriptInterface
+    @SuppressWarnings("deprecation")
+    public int getVersionCode() {
+      try {
+        android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? (int) info.getLongVersionCode() : info.versionCode;
+      } catch (Exception e) {
+        return 0;
+      }
+    }
+
+    // Abre un enlace fuera de la app (ej. la descarga de la APK nueva).
+    @JavascriptInterface
+    public void openExternal(String url) {
+      runOnUiThread(() -> {
+        try {
+          startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (ActivityNotFoundException e) {
+          Toast.makeText(MainActivity.this, "No hay app para abrir el enlace", Toast.LENGTH_SHORT).show();
+        }
+      });
+    }
+
+    // Guarda un respaldo automático en Descargas/Remesas sin preguntar nada.
+    // Devuelve "ok" o "error:<motivo>". Se ejecuta en el hilo del puente
+    // (no en el de la interfaz), así que puede escribir el archivo directo.
+    @JavascriptInterface
+    public String saveAutoBackup(String name, String base64) {
+      try {
+        byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          guardarConMediaStore(name, bytes);
+          limpiarRespaldosMediaStore();
+        } else {
+          if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            runOnUiThread(() -> requestPermissions(new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQ_PERMISO_ALMACENAMIENTO));
+            return "error:permiso";
+          }
+          guardarEnCarpetaPublica(name, bytes);
+        }
+        return "ok";
+      } catch (Exception e) {
+        return "error:" + e.getMessage();
+      }
+    }
+
     @JavascriptInterface
     public void saveFile(String name, String mime, String base64) {
       byte[] bytes = Base64.decode(base64, Base64.DEFAULT);
@@ -188,6 +254,67 @@ public class MainActivity extends Activity {
           Toast.makeText(MainActivity.this, "No se pudo guardar el archivo", Toast.LENGTH_LONG).show();
         }
       });
+    }
+  }
+
+  // Android 10+: Descargas/Remesas vía MediaStore (no necesita permisos).
+  @android.annotation.TargetApi(Build.VERSION_CODES.Q)
+  private void guardarConMediaStore(String name, byte[] bytes) throws Exception {
+    ContentValues v = new ContentValues();
+    v.put(MediaStore.Downloads.DISPLAY_NAME, name);
+    v.put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream");
+    v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/" + CARPETA_RESPALDOS);
+    ContentResolver cr = getContentResolver();
+    Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+    if (uri == null) throw new Exception("no se pudo crear el archivo");
+    try (OutputStream out = cr.openOutputStream(uri)) {
+      out.write(bytes);
+    }
+  }
+
+  // Deja solo los MAX_RESPALDOS_AUTO automáticos más recientes (los manuales no se tocan).
+  @android.annotation.TargetApi(Build.VERSION_CODES.Q)
+  private void limpiarRespaldosMediaStore() {
+    ContentResolver cr = getContentResolver();
+    String[] cols = {MediaStore.Downloads._ID};
+    String sel = MediaStore.Downloads.RELATIVE_PATH + " LIKE ? AND " + MediaStore.Downloads.DISPLAY_NAME + " LIKE ?";
+    String[] args = {Environment.DIRECTORY_DOWNLOADS + "/" + CARPETA_RESPALDOS + "%", PREFIJO_AUTO + "%"};
+    try (Cursor c = cr.query(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cols, sel, args, MediaStore.Downloads.DATE_ADDED + " DESC")) {
+      if (c == null) return;
+      int i = 0;
+      while (c.moveToNext()) {
+        if (++i <= MAX_RESPALDOS_AUTO) continue;
+        long id = c.getLong(0);
+        cr.delete(Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, String.valueOf(id)), null, null);
+      }
+    } catch (Exception ignored) {
+      // limpiar es opcional: si falla, el respaldo ya quedó guardado
+    }
+  }
+
+  // Android 7–9: carpeta pública con el permiso de almacenamiento.
+  @SuppressWarnings("deprecation")
+  private void guardarEnCarpetaPublica(String name, byte[] bytes) throws Exception {
+    File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), CARPETA_RESPALDOS);
+    if (!dir.exists() && !dir.mkdirs()) throw new Exception("no se pudo crear la carpeta");
+    try (FileOutputStream out = new FileOutputStream(new File(dir, name))) {
+      out.write(bytes);
+    }
+    File[] auto = dir.listFiles((d, n) -> n.startsWith(PREFIJO_AUTO));
+    if (auto != null && auto.length > MAX_RESPALDOS_AUTO) {
+      List<File> lista = new ArrayList<>(Arrays.asList(auto));
+      lista.sort((a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+      for (int i = MAX_RESPALDOS_AUTO; i < lista.size(); i++) lista.get(i).delete();
+    }
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    if (requestCode == REQ_PERMISO_ALMACENAMIENTO && grantResults.length > 0
+        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+      // Con el permiso recién concedido, se reintenta el respaldo pendiente.
+      webView.evaluateJavascript("typeof hacerRespaldoAutomatico==='function' && hacerRespaldoAutomatico()", null);
     }
   }
 

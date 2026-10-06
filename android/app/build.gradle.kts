@@ -13,7 +13,9 @@ android {
     // Cada compilación en GitHub Actions sube el número de versión para que
     // la APK nueva se instale encima de la anterior sin perder los datos.
     versionCode = 100 + (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
-    versionName = "1.0.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+    // Igual que la etiqueta de la release (v1.0.<versionCode>): la app la
+    // compara con GitHub para avisar de versiones nuevas.
+    versionName = "1.0.${100 + (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()}"
   }
 
   // Firma fija: si cambiara entre compilaciones, Android rechazaría la

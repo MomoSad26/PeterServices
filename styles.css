@@ -393,3 +393,10 @@ label.field-label{display:block;font-size:12.5px;font-weight:700;color:var(--ink
 @media (max-width:360px){
   .modal-actions .btn{font-size:13px;padding:11px 8px;}
 }
+
+/* Avisos flotantes (respaldo semanal, versión nueva de la APK) */
+.floating-banner{
+  position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:190;
+  background:var(--toast-bg);color:#fff;padding:10px 10px 10px 14px;border-radius:12px;box-shadow:var(--shadow);
+  display:flex;align-items:center;gap:8px;font-size:13.5px;max-width:616px;margin:0 auto;
+}

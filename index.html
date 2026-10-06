@@ -9,6 +9,8 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="styles.css">
+<!-- Aplica modo oscuro y color ANTES de pintar (evita el "flash" del tema equivocado). -->
+<script src="prefs.js"></script>
 </head>
 <body>
 
@@ -43,6 +45,8 @@
     <li><a href="#/balance" data-view="balance"><span class="mi">📊</span>Balance</a></li>
     <li><a href="#/deudas" data-view="deudas"><span class="mi">🤝</span>Deudas</a></li>
     <li><a href="#/respaldos" data-view="respaldos"><span class="mi">💾</span>Respaldos</a></li>
+    <!-- REGLA PERMANENTE: "Ajustes" es SIEMPRE el último menú. Los menús nuevos van ENCIMA de esta línea. -->
+    <li><a href="#/ajustes" data-view="ajustes"><span class="mi">⚙️</span>Ajustes</a></li>
   </ul>
 </nav>
 <div id="side-overlay" class="side-overlay"></div>
@@ -50,6 +54,8 @@
 <main id="app-content" class="app-content">
   <div class="empty-state"><div class="ei">⏳</div>Cargando datos…</div>
 </main>
+
+<button id="fab-envio" class="fab-envio" aria-label="Registrar envío">📤</button>
 
 <script src="app.js"></script>
 </body>

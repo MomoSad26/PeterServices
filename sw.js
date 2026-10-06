@@ -1,9 +1,10 @@
-const CACHE = 'remesas-v11';
+const CACHE = 'remesas-v12';
 const FILES = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './prefs.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'

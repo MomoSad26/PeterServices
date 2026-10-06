@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
           + "})();";
 
   private WebView webView;
+  private FrameLayout root;
   private ValueCallback<Uri[]> pendingFileCallback;
   private byte[] pendingSaveBytes;
 
@@ -70,7 +71,7 @@ public class MainActivity extends Activity {
     getWindow().setStatusBarColor(Color.TRANSPARENT);
     getWindow().setNavigationBarColor(Color.TRANSPARENT);
 
-    FrameLayout root = new FrameLayout(this);
+    root = new FrameLayout(this);
     root.setBackgroundColor(THEME_COLOR);
     webView = new WebView(this);
     webView.setBackgroundColor(Color.parseColor("#F7F5F0"));
@@ -158,6 +159,19 @@ public class MainActivity extends Activity {
   }
 
   private class Bridge {
+    // La web avisa del color de su barra superior (Ajustes → Color principal)
+    // para pintar igual la franja de la barra de estado.
+    @JavascriptInterface
+    public void setThemeColor(String hex) {
+      runOnUiThread(() -> {
+        try {
+          root.setBackgroundColor(Color.parseColor(hex));
+        } catch (IllegalArgumentException ignored) {
+          // color inválido: se deja el actual
+        }
+      });
+    }
+
     @JavascriptInterface
     public void saveFile(String name, String mime, String base64) {
       byte[] bytes = Base64.decode(base64, Base64.DEFAULT);

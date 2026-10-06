@@ -190,7 +190,10 @@ function persist(dbObj){
     try{ localStorage.setItem(DB_KEY, JSON.stringify(data)); }catch(e){ console.error('Error guardando datos', e); }
   }
 }
-function save(){ persist(DB); }
+// Cuenta cada cambio guardado. Sirve para "Deshacer": solo se puede deshacer
+// una eliminación si no hubo NINGÚN otro cambio después de ella.
+let contadorCambios = 0;
+function save(){ contadorCambios++; persist(DB); }
 
 function tamanioBaseDatosBytes(){
   try{ return new Blob([JSON.stringify(DB)]).size; }catch(e){ return 0; }
@@ -290,6 +293,26 @@ function coincideBusqueda(texto, termino){
   if(!termino) return true;
   return normalizarTexto(texto).includes(normalizarTexto(termino));
 }
+// 0 = el nombre (o una de sus palabras) EMPIEZA por el término, 1 = lo
+// contiene en medio, -1 = no coincide. "car" → Carlos (0) antes que Óscar (1).
+function rangoCoincidencia(texto, termino){
+  const t = normalizarTexto(texto), q = normalizarTexto(termino);
+  if(!q) return 0;
+  if(t.startsWith(q)) return 0;
+  if(t.split(' ').some(p=>p.startsWith(q))) return 0.5;
+  return t.includes(q) ? 1 : -1;
+}
+// Devuelve los primeros `limite` items que coinciden, priorizando los que
+// empiezan por el término; a igual prioridad, orden alfabético.
+function sugerirCoincidencias(lista, termino, campoNombre='nombre', limite=5){
+  if(!normalizarTexto(termino)) return [];
+  return lista
+    .map(it=>({it, r:rangoCoincidencia(it[campoNombre], termino)}))
+    .filter(x=>x.r>=0)
+    .sort((a,b)=> a.r-b.r || String(a.it[campoNombre]).localeCompare(String(b.it[campoNombre]),'es'))
+    .slice(0, limite)
+    .map(x=>x.it);
+}
 
 function initials(name){
   if(!name) return '?';
@@ -302,10 +325,67 @@ function initials(name){
 
 function toast(msg){
   const el = document.getElementById('toast');
+  cancelarDeshacerPendiente();
+  el.classList.remove('toast-action');
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toast._t);
   toast._t = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+/* ---- Deshacer eliminación ----
+   Antes de eliminar se guarda una copia completa de la base de datos. Si el
+   usuario toca "Deshacer" a tiempo, se vuelve a esa copia: así se restauran
+   EXACTAMENTE el registro, los saldos de todas las divisas y la deuda
+   asociada (si la había), sin tener que repetir la lógica de balance de
+   cada tipo de registro. Solo se puede deshacer la última eliminación. */
+const DESHACER_MS = 5000;
+let deshacerPendiente = null; // {snapshot, cambiosTrasEliminar, timer}
+
+function cancelarDeshacerPendiente(){
+  if(!deshacerPendiente) return;
+  clearTimeout(deshacerPendiente.timer);
+  deshacerPendiente = null;
+}
+
+function mostrarToastDeshacer(mensaje, onDeshacer){
+  const el = document.getElementById('toast');
+  cancelarDeshacerPendiente();
+  clearTimeout(toast._t);
+  el.classList.add('toast-action');
+  el.innerHTML = `<span>🗑️ ${escapeHtml(mensaje)}</span><button class="toast-undo-btn" type="button">Deshacer</button>`;
+  el.classList.add('show');
+  const estado = {timer:null};
+  deshacerPendiente = estado;
+  el.querySelector('.toast-undo-btn').onclick = ()=>{
+    if(deshacerPendiente !== estado) return;
+    cancelarDeshacerPendiente();
+    el.classList.remove('show');
+    onDeshacer();
+  };
+  estado.timer = setTimeout(()=>{
+    if(deshacerPendiente !== estado) return;
+    deshacerPendiente = null;
+    el.classList.remove('show');
+  }, DESHACER_MS);
+}
+
+/* Ejecuta una eliminación (que debe incluir su propio save()) y ofrece
+   deshacerla durante unos segundos. */
+function eliminarConDeshacer(mensaje, eliminar){
+  const snapshot = JSON.parse(JSON.stringify(DB));
+  eliminar();
+  const cambiosTrasEliminar = contadorCambios;
+  mostrarToastDeshacer(mensaje, ()=>{
+    if(contadorCambios !== cambiosTrasEliminar){
+      toast('No se puede deshacer: hubo otros cambios después de eliminar.');
+      return;
+    }
+    DB = snapshot;
+    save();
+    route();
+    toast('Eliminación deshecha');
+  });
 }
 
 function todayRangeStart(){
@@ -508,7 +588,7 @@ function confirmDialog(msg, onConfirm, opts={}){
   const cancelLabel = opts.cancelLabel || 'Cancelar';
   const danger = opts.danger !== false;
   openModal(`
-    <div class="modal-msg" style="font-size:15px;color:var(--ink);font-weight:600;margin-bottom:0;">${msg}</div>
+    <div class="modal-msg" style="font-size:15px;color:var(--ink-main);font-weight:600;margin-bottom:0;">${msg}</div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="cd-cancel">${cancelLabel}</button>
       <button class="btn ${danger?'btn-danger':'btn-primary'} btn-block" id="cd-ok">${okLabel}</button>
@@ -542,6 +622,12 @@ function openEntityPicker(modo, onPick){
     }
     if(modo==='trabajador' || modo==='combinado'){
       items = items.concat(trabajadoresActivos.filter(t=>coincideBusqueda(t.nombre, f)).map(t=>({...t, __tipo:'trabajador'})));
+    }
+    // Esta lista ya funciona como las sugerencias del buscador (tocar un
+    // resultado lo selecciona y cierra el selector); al escribir, se ponen
+    // primero los nombres que EMPIEZAN por lo escrito.
+    if(normalizarTexto(f)){
+      items.sort((a,b)=> rangoCoincidencia(a.nombre, f)-rangoCoincidencia(b.nombre, f) || a.nombre.localeCompare(b.nombre,'es'));
     }
     if(items.length===0){
       return `<div class="empty-state"><div class="ei">🔍</div>Sin resultados</div>`;
@@ -603,6 +689,52 @@ function openEntityPicker(modo, onPick){
     };
   }
   setTimeout(()=>document.getElementById('picker-search')?.focus(), 150);
+}
+
+/* ---------------------------------------------------------------------- *
+ * 6b. AUTOCOMPLETADO EN BUSCADORES DE LISTADOS
+ *     Debajo del campo aparecen hasta 5 nombres que coinciden. Al tocar uno,
+ *     el campo se completa con el nombre exacto y la lista se filtra.
+ * ---------------------------------------------------------------------- */
+function activarSugerencias(inputEl, {obtenerCandidatos, onElegir}){
+  const wrap = inputEl.closest('.search-wrap') || inputEl.parentElement;
+  let box = null;
+  function cerrar(){ if(box){ box.remove(); box = null; } }
+  function abrir(){
+    const termino = inputEl.value;
+    if(!normalizarTexto(termino)){ cerrar(); return; }
+    const sugerencias = sugerirCoincidencias(obtenerCandidatos(), termino, 'nombre', 5);
+    // Si lo escrito ya es exactamente el único resultado, no hace falta sugerir nada.
+    if(sugerencias.length===1 && normalizarTexto(sugerencias[0].nombre)===normalizarTexto(termino)){ cerrar(); return; }
+    if(!box){
+      box = document.createElement('div');
+      box.className = 'suggest-box';
+      wrap.appendChild(box);
+    }
+    box.innerHTML = sugerencias.length ? sugerencias.map((it,i)=>`
+      <div class="suggest-item" data-i="${i}">
+        <div class="avatar">${it.avatar || initials(it.nombre)}</div>
+        <div class="li-main">
+          <div class="li-title">${escapeHtml(it.nombre)}</div>
+          ${it.sub ? `<div class="li-sub">${escapeHtml(it.sub)}</div>` : ''}
+        </div>
+      </div>`).join('') : `<div class="suggest-empty">Sin resultados</div>`;
+    box.querySelectorAll('.suggest-item').forEach(el=>{
+      // pointerdown + preventDefault: se elige ANTES de que el campo pierda el foco.
+      el.addEventListener('pointerdown', (ev)=>{
+        ev.preventDefault();
+        const it = sugerencias[Number(el.dataset.i)];
+        cerrar();
+        inputEl.value = it.nombre;
+        onElegir(it);
+      });
+    });
+  }
+  inputEl.setAttribute('autocomplete', 'off');
+  inputEl.addEventListener('input', abrir);
+  inputEl.addEventListener('focus', abrir);
+  inputEl.addEventListener('blur', ()=> setTimeout(cerrar, 150));
+  inputEl.addEventListener('keydown', (e)=>{ if(e.key==='Escape' || e.key==='Enter') cerrar(); });
 }
 
 /* ---------------------------------------------------------------------- *
@@ -668,7 +800,7 @@ const TITLES = {
   clientes:'Clientes', envio:'Nuevo envío', trabajadores:'Trabajadores',
   'precio-especial':'Precio especial', historial:'Historial de envíos',
   compras:'Compras', ventas:'Ventas', gastos:'Gastos', 'in-out':'In/Out',
-  balance:'Balance', respaldos:'Respaldos', deudas:'Deudas'
+  balance:'Balance', respaldos:'Respaldos', deudas:'Deudas', ajustes:'Ajustes'
 };
 
 function parseHash(){
@@ -709,7 +841,13 @@ function route(){
   switch(view){
     case 'clientes': renderClientesList(content, param); break;
     case 'cliente-detalle': renderClienteDetalle(content, Number(param)); break;
-    case 'envio': renderEnvioClienteForm(content); break;
+    case 'envio': {
+      // #/envio/cliente/123 → formulario con ese cliente ya seleccionado.
+      const m = /^cliente\/(\d+)$/.exec(param||'');
+      renderEnvioClienteForm(content, m ? Number(m[1]) : null);
+      break;
+    }
+    case 'precio-especial': renderPrecioEspecialForm(content); break;
     case 'trabajadores': renderTrabajadoresList(content); break;
     case 'trabajador-detalle': renderTrabajadorDetalle(content, Number(param)); break;
     case 'envio-trabajador': renderEnvioTrabajadorForm(content, Number(param)); break;
@@ -722,9 +860,24 @@ function route(){
     case 'balance': renderBalance(content); break;
     case 'respaldos': renderRespaldos(content); break;
     case 'deudas': renderDeudas(content); break;
+    case 'ajustes': renderAjustes(content); break;
     default: renderClientesList(content);
   }
+  duplicadoEnvioPendiente = null; // si la vista no lo usó, se descarta
+  actualizarFabEnvio();
   restoreScrollFor(view);
+}
+
+/* ---- Botón flotante "Registrar envío" ----
+   Visible en las pantallas de listados. Si la pantalla ya tiene su propio
+   botón "+" (Clientes, Trabajadores, Deudas), se coloca encima de él. */
+const VISTAS_CON_FAB_ENVIO = ['clientes','trabajadores','historial','compras','ventas','gastos','in-out','deudas'];
+function actualizarFabEnvio(){
+  const fab = document.getElementById('fab-envio');
+  if(!fab) return;
+  const visible = VISTAS_CON_FAB_ENVIO.includes(currentRouteView);
+  fab.classList.toggle('visible', visible);
+  fab.classList.toggle('stacked', visible && !!document.querySelector('#app-content .fab'));
 }
 
 function openSideMenu(){
@@ -748,6 +901,7 @@ async function bootstrap(){
   normalizarNombresDeudasAutomaticas();
 
   document.getElementById('btn-menu').addEventListener('click', openSideMenu);
+  document.getElementById('fab-envio').addEventListener('click', ()=>{ location.hash = '#/envio'; });
   document.getElementById('side-overlay').addEventListener('click', closeSideMenu);
   document.querySelectorAll('.menu-list a').forEach(a=>{
     a.addEventListener('click', closeSideMenu);
@@ -788,7 +942,7 @@ function mostrarBannerActualizacion(onUpdate){
   if(document.getElementById('update-banner')) return;
   const div = document.createElement('div');
   div.id = 'update-banner';
-  div.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:200;background:var(--teal-900);color:#fff;padding:12px 14px;border-radius:12px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-size:13.5px;';
+  div.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:200;background:var(--toast-bg);color:#fff;padding:12px 14px;border-radius:12px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-size:13.5px;';
   div.innerHTML = `<span style="flex:1;">🔄 Hay una nueva versión de la app lista.</span><button class="btn btn-gold btn-sm" id="update-banner-btn">Actualizar</button>`;
   document.body.appendChild(div);
   document.getElementById('update-banner-btn').onclick = ()=>{ div.remove(); onUpdate(); };
@@ -812,12 +966,20 @@ function renderClientesList(content, searchTerm){
       <span class="search-icon">🔍</span>
       <input type="text" id="cli-search" placeholder="Buscar cliente..." value="${escapeHtml(searchTerm)}">
     </div>
-    <div id="cli-list">${items.length ? items.map(clienteRowHtml).join('') : emptyState('👤','Aún no hay clientes registrados')}</div>
+    <div id="cli-list" class="${zebraClase(items.length)}">${items.length ? items.map(clienteRowHtml).join('') : emptyState('👤','Aún no hay clientes registrados')}</div>
     <button class="fab" id="fab-add-cliente" aria-label="Agregar cliente">+</button>
   `;
-  document.getElementById('cli-search').addEventListener('input', e=>{
-    document.getElementById('cli-list').innerHTML = renderClienteListInner(e.target.value);
+  function refrescarLista(){
+    const el = document.getElementById('cli-list');
+    el.innerHTML = renderClienteListInner(document.getElementById('cli-search').value);
+    aplicarZebra(el);
     bindClienteRowClicks();
+  }
+  const searchEl = document.getElementById('cli-search');
+  searchEl.addEventListener('input', refrescarLista);
+  activarSugerencias(searchEl, {
+    obtenerCandidatos: ()=> DB.clientes.filter(c=>c.activo).map(c=>({nombre:c.nombre, sub:c.pais||''})),
+    onElegir: refrescarLista
   });
   document.getElementById('fab-add-cliente').onclick = ()=>openClienteFormModal(null, ()=>route());
   bindClienteRowClicks();
@@ -832,10 +994,7 @@ function renderClientesList(content, searchTerm){
     document.querySelectorAll('#cli-list .edit-btn').forEach(el=>{
       el.onclick = (e)=>{
         e.stopPropagation();
-        openClienteFormModal(Number(el.dataset.id), ()=>{
-          document.getElementById('cli-list').innerHTML = renderClienteListInner(document.getElementById('cli-search').value);
-          bindClienteRowClicks();
-        });
+        openClienteFormModal(Number(el.dataset.id), refrescarLista);
       };
     });
     document.querySelectorAll('#cli-list .trash-btn').forEach(el=>{
@@ -843,9 +1002,8 @@ function renderClientesList(content, searchTerm){
         e.stopPropagation();
         const c = DB.clientes.find(x=>x.id===Number(el.dataset.id));
         confirmDialog(`¿Eliminar al cliente ${escapeHtml(c.nombre)} (${escapeHtml(c.pais)})?`, ()=>{
-          c.activo = 0; save(); toast('Cliente eliminado');
-          document.getElementById('cli-list').innerHTML = renderClienteListInner(document.getElementById('cli-search').value);
-          bindClienteRowClicks();
+          eliminarConDeshacer('Cliente eliminado', ()=>{ c.activo = 0; save(); });
+          refrescarLista();
         });
       };
     });
@@ -874,6 +1032,15 @@ function emptyState(icon, text){
   return `<div class="empty-state"><div class="ei">${icon}</div>${escapeHtml(text)}</div>`;
 }
 
+/* Filas alternadas (zebra): solo en listados de MÁS de 6 ítems. En listados
+   paginados se pasa el total del resultado filtrado, no solo la página. */
+function zebraClase(total){ return total > 6 ? 'list-zebra' : ''; }
+function aplicarZebra(el, total){
+  if(!el) return;
+  if(total === undefined) total = el.querySelectorAll(':scope > .list-item, :scope > .hd-mov-item').length;
+  el.classList.toggle('list-zebra', total > 6);
+}
+
 function openClienteFormModal(clienteId, onSaved){
   const editing = clienteId ? DB.clientes.find(c=>c.id===clienteId) : null;
   openModal(`
@@ -886,7 +1053,7 @@ function openClienteFormModal(clienteId, onSaved){
     <input type="tel" id="cf-tel" maxlength="20" value="${escapeHtml(editing?.telefono||'')}" placeholder="Opcional">
     <label class="field-label">Notas</label>
     <textarea id="cf-notas" maxlength="500" placeholder="Opcional">${escapeHtml(editing?.notas||'')}</textarea>
-    <div id="cf-error" style="color:var(--red);font-size:13px;margin-top:10px;display:none;"></div>
+    <div id="cf-error" style="color:var(--red-text);font-size:13px;margin-top:10px;display:none;"></div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="cf-cancel">Cancelar</button>
       <button class="btn btn-primary btn-block" id="cf-save">Guardar</button>
@@ -952,8 +1119,9 @@ function renderClienteDetalle(content, id){
         <button class="btn btn-danger btn-block" id="cd-del">Eliminar</button>
       </div>
     </div>
+    ${c.activo ? `<button class="btn btn-gold btn-block" id="cd-registrar" style="margin-top:16px;">📤 Registrar envío para este cliente</button>` : ''}
 
-    <h3 style="margin:18px 0 10px;font-size:15px;color:var(--teal-900);">Últimos envíos</h3>
+    <h3 style="margin:18px 0 10px;font-size:15px;color:var(--heading);">Últimos envíos</h3>
     <div id="cd-envios">
       ${envios.length ? envios.map(e=>`
         <div class="list-item" data-eid="${e.id}">
@@ -969,9 +1137,12 @@ function renderClienteDetalle(content, id){
   document.getElementById('cd-edit').onclick = ()=> openClienteFormModal(c.id, ()=>renderClienteDetalle(content, id));
   document.getElementById('cd-del').onclick = ()=>{
     confirmDialog(`¿Eliminar al cliente ${escapeHtml(c.nombre)} (${escapeHtml(c.pais)})?`, ()=>{
-      c.activo = 0; save(); toast('Cliente eliminado'); location.hash = '#/clientes';
+      eliminarConDeshacer('Cliente eliminado', ()=>{ c.activo = 0; save(); });
+      location.hash = '#/clientes';
     });
   };
+  const registrarBtn = document.getElementById('cd-registrar');
+  if(registrarBtn) registrarBtn.onclick = ()=>{ location.hash = `#/envio/cliente/${c.id}`; };
   content.querySelectorAll('#cd-envios .list-item').forEach(el=>{
     el.onclick = ()=> location.hash = `#/envio-detalle/${el.dataset.eid}`;
   });
@@ -980,9 +1151,24 @@ function renderClienteDetalle(content, id){
 /* ---------------------------------------------------------------------- *
  * 10. MENÚ 2 — ENVÍO (CLIENTE DIRECTO) y ENVÍO DE TRABAJADOR
  * ---------------------------------------------------------------------- */
+/* Datos para precargar el próximo formulario de envío (los pone "Duplicar").
+   El formulario los toma al pintarse y route() los descarta después, así
+   nunca quedan colgados para otra pantalla. */
+let duplicadoEnvioPendiente = null; // {tipo, envio}
+function tomarDuplicadoEnvio(tipo){
+  const d = duplicadoEnvioPendiente;
+  duplicadoEnvioPendiente = null;
+  return d && d.tipo===tipo ? d.envio : null;
+}
+
 function envioFormHtml(opts){
+  const p = opts.prefill || null;
+  const val = (v)=> (v===null || v===undefined) ? '' : escapeHtml(String(v));
+  const descuenta = p ? (envioDescuentaAhora(p) ? 1 : 0) : 0;
+  const forma = p ? p.forma_ganancia : 'Efectivo';
   return `
     <h1 class="section-title">${opts.titulo}</h1>
+    ${p ? `<div class="badge badge-gold" style="margin:-4px 0 6px;">📋 Duplicado — revise y guarde como envío nuevo</div>` : ''}
 
     <label class="field-label">${opts.entityLabel} *</label>
     ${opts.showEntityPicker ? `
@@ -996,43 +1182,41 @@ function envioFormHtml(opts){
     `}
 
     <label class="field-label">Cantidad enviada *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-cantidad" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="ef-cantidad" placeholder="0.00" value="${val(p?.cantidad_enviada)}">
 
     <label class="field-label">Moneda *</label>
-    <select id="ef-moneda" class="picker">${monedaOptionsHtml('USD')}</select>
+    <select id="ef-moneda" class="picker">${monedaOptionsHtml(p ? p.moneda : 'USD')}</select>
 
     <label class="field-label">Precio *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-precio" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="ef-precio" placeholder="0.00" value="${val(p?.precio)}">
 
     <label class="field-label">Cantidad pagada (Entregar) *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-pagada" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="ef-pagada" placeholder="0.00" value="${val(p?.cantidad_pagada)}">
     <div class="hint">Se calcula automático: Cantidad enviada × Precio. Puede ajustarlo.</div>
 
     <label class="field-label">Divisa de entrega *</label>
-    <select id="ef-divisa-entrega" class="picker">${divisaOptionsHtml('')}</select>
+    <select id="ef-divisa-entrega" class="picker">${divisaOptionsHtml(p ? p.divisa_entrega : '')}</select>
 
     <label class="field-label">Descontar divisa pagada del balance general al pagar</label>
     <div class="pill-row" id="ef-descuenta">
-      <div class="pill active" data-v="0">No</div>
-      <div class="pill" data-v="1">Sí</div>
+      <div class="pill ${descuenta?'':'active'}" data-v="0">No</div>
+      <div class="pill ${descuenta?'active':''}" data-v="1">Sí</div>
     </div>
     <div class="hint">Si está en "No", la divisa de entrega no se descuenta ahora — se crea un registro pendiente en Deudas → Pagar a.</div>
 
     <label class="field-label">Cotizado a</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-cotizado" placeholder="Opcional">
+    <input type="number" inputmode="decimal" step="0.01" id="ef-cotizado" placeholder="Opcional" value="${val(p?.cotizado_a)}">
 
     <label class="field-label">Ganancia *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-ganancia" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="ef-ganancia" placeholder="0.00" value="${val(p?.ganancia)}">
     <div class="hint">Se calcula automático: Cantidad enviada × (Cotizado a − Precio). Puede ajustarlo.</div>
 
     <label class="field-label">Divisa de ganancia *</label>
-    <select id="ef-divisa-ganancia" class="picker">${divisaOptionsHtml('')}</select>
+    <select id="ef-divisa-ganancia" class="picker">${divisaOptionsHtml(p ? p.divisa_ganancia : '')}</select>
 
     <label class="field-label">Forma de ganancia *</label>
     <div class="pill-row" id="ef-forma">
-      <div class="pill active" data-v="Efectivo">Efectivo</div>
-      <div class="pill" data-v="Transferencia">Transferencia</div>
-      <div class="pill" data-v="USD">USD</div>
+      ${['Efectivo','Transferencia','USD'].map(f=>`<div class="pill ${forma===f?'active':''}" data-v="${f}">${f}</div>`).join('')}
     </div>
 
     <label class="field-label">Fecha y hora del envío *</label>
@@ -1040,13 +1224,13 @@ function envioFormHtml(opts){
     <div class="hint">Por defecto es la fecha y hora actual. Puede ajustarla.</div>
 
     <label class="field-label">Nota</label>
-    <textarea id="ef-nota" maxlength="500" placeholder="Opcional"></textarea>
+    <textarea id="ef-nota" maxlength="500" placeholder="Opcional">${p ? escapeHtml(p.nota||'') : ''}</textarea>
 
     <button class="btn btn-primary btn-block" id="ef-revisar" style="margin-top:22px;">Revisar y guardar</button>
   `;
 }
 
-function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onSaved}){
+function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onSaved, prefill}){
   const cantEl = document.getElementById('ef-cantidad');
   const precioEl = document.getElementById('ef-precio');
   const pagadaEl = document.getElementById('ef-pagada');
@@ -1059,6 +1243,18 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
   let pagadaTouched = false, gananciaTouched = false;
   let formaGanancia = 'Efectivo';
   let descuentaAhora = 0;
+  if(prefill){
+    formaGanancia = prefill.forma_ganancia || 'Efectivo';
+    descuentaAhora = envioDescuentaAhora(prefill) ? 1 : 0;
+    // Si el original tenía la cantidad pagada o la ganancia ajustadas a mano
+    // (distintas del cálculo automático), se respetan tal cual; si coinciden
+    // con el cálculo, siguen recalculándose al cambiar cantidad o precio.
+    const cant = Number(prefill.cantidad_enviada)||0, precio = Number(prefill.precio)||0;
+    pagadaTouched = round2(cant*precio) !== round2(prefill.cantidad_pagada);
+    const cot = prefill.cotizado_a;
+    const gananciaAuto = (cot===null || cot===undefined) ? null : round2(cant*(cot-precio));
+    gananciaTouched = gananciaAuto===null ? true : gananciaAuto !== round2(prefill.ganancia);
+  }
 
   bindAddOnSelect(monedaEl, addMoneda, monedaOptionsHtml);
   bindAddOnSelect(divEntregaEl, addDivisa, divisaOptionsHtml);
@@ -1157,7 +1353,7 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
 function showEnvioSummary(envio, entity, onSaved){
   openModal(`
     <div class="modal-title">Confirme los datos del envío antes de guardar.</div>
-    <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;margin-top:10px;">
+    <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:10px;">
       <div class="sumrow"><span class="k">${envio.tipo==='trabajador'?'Trabajador':'Cliente'}</span><span class="v">${escapeHtml(entity.nombre)}</span></div>
       <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(envio.cantidad_enviada)} ${escapeHtml(envio.moneda)}</span></div>
       <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(envio.precio)}</span></div>
@@ -1195,16 +1391,23 @@ function showEnvioSummary(envio, entity, onSaved){
   };
 }
 
-function renderEnvioClienteForm(content){
-  let entity = null;
-  content.innerHTML = envioFormHtml({titulo:'Envío a cliente', entityLabel:'Cliente', entityName:'', showEntityPicker:true});
+function renderEnvioClienteForm(content, clienteIdPrecargado){
+  const prefill = tomarDuplicadoEnvio('cliente_directo');
+  // Cliente precargado: el del envío duplicado, o el de #/envio/cliente/ID.
+  const idCliente = prefill ? prefill.cliente_id : clienteIdPrecargado;
+  let entity = idCliente ? (DB.clientes.find(c=>c.id===idCliente && c.activo) || null) : null;
+  content.innerHTML = envioFormHtml({titulo:'Envío a cliente', entityLabel:'Cliente', entityName: entity ? entity.nombre : '', showEntityPicker:true, prefill});
   wireEnvioForm(content, {
     tipo:'cliente_directo',
     getEntity: ()=>entity,
     setEntity: (e)=>{entity=e;},
     entityRequired:true,
-    onSaved: ()=>{ renderEnvioClienteForm(content); }
+    prefill,
+    // Tras guardar, el formulario queda limpio; si se llegó desde el
+    // detalle de un cliente, ese cliente sigue seleccionado.
+    onSaved: ()=>{ renderEnvioClienteForm(content, clienteIdPrecargado); }
   });
+  if(prefill && idCliente && !entity) toast('El cliente original ya no existe. Seleccione un cliente.');
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1220,9 +1423,18 @@ function renderTrabajadoresList(content){
     <div id="tr-list">${renderTrabajadorListInner('')}</div>
     <button class="fab" id="fab-add-tr" aria-label="Agregar trabajador">+</button>
   `;
-  document.getElementById('tr-search').addEventListener('input', e=>{
-    document.getElementById('tr-list').innerHTML = renderTrabajadorListInner(e.target.value);
+  function refrescarLista(){
+    const el = document.getElementById('tr-list');
+    el.innerHTML = renderTrabajadorListInner(document.getElementById('tr-search').value);
+    aplicarZebra(el);
     bindTrRows();
+  }
+  aplicarZebra(document.getElementById('tr-list'));
+  const searchEl = document.getElementById('tr-search');
+  searchEl.addEventListener('input', refrescarLista);
+  activarSugerencias(searchEl, {
+    obtenerCandidatos: ()=> DB.trabajadores.filter(t=>t.activo).map(t=>({nombre:t.nombre, sub:'Trabajador', avatar:'👷'})),
+    onElegir: refrescarLista
   });
   document.getElementById('fab-add-tr').onclick = ()=>openTrabajadorFormModal(null, ()=>route());
   bindTrRows();
@@ -1238,10 +1450,9 @@ function renderTrabajadoresList(content){
       el.onclick = (e)=>{
         e.stopPropagation();
         const t = DB.trabajadores.find(x=>x.id===Number(el.dataset.id));
-        confirmDialog(`¿Eliminar al trabajador ${escapeHtml(t.nombre)}${t.telefono ? ' ('+t.telefono+')' : ''}?`, ()=>{
-          t.activo = 0; save(); toast('Trabajador eliminado');
-          document.getElementById('tr-list').innerHTML = renderTrabajadorListInner(document.getElementById('tr-search').value);
-          bindTrRows();
+        confirmDialog(`¿Eliminar al trabajador ${escapeHtml(t.nombre)}${t.telefono ? ' ('+escapeHtml(t.telefono)+')' : ''}?`, ()=>{
+          eliminarConDeshacer('Trabajador eliminado', ()=>{ t.activo = 0; save(); });
+          refrescarLista();
         });
       };
     });
@@ -1271,7 +1482,7 @@ function openTrabajadorFormModal(id, onSaved){
     <input type="text" id="tf-nombre" maxlength="100" value="${escapeHtml(editing?.nombre||'')}" placeholder="Nombre del trabajador">
     <label class="field-label">Teléfono</label>
     <input type="tel" id="tf-tel" maxlength="20" value="${escapeHtml(editing?.telefono||'')}" placeholder="Opcional">
-    <div id="tf-error" style="color:var(--red);font-size:13px;margin-top:10px;display:none;"></div>
+    <div id="tf-error" style="color:var(--red-text);font-size:13px;margin-top:10px;display:none;"></div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="tf-cancel">Cancelar</button>
       <button class="btn btn-primary btn-block" id="tf-save">Guardar</button>
@@ -1317,7 +1528,7 @@ function renderTrabajadorDetalle(content, id){
     </div>
     <button class="btn btn-gold btn-block" id="td-registrar" style="margin-top:16px;">📤 Registrar envío de este trabajador</button>
 
-    <h3 style="margin:18px 0 10px;font-size:15px;color:var(--teal-900);">Últimos envíos</h3>
+    <h3 style="margin:18px 0 10px;font-size:15px;color:var(--heading);">Últimos envíos</h3>
     <div id="td-envios">
       ${(()=>{
         const envios = DB.envios.filter(e=>e.tipo==='trabajador' && e.trabajador_id===id).sort((a,b)=>b.fecha_hora-a.fecha_hora).slice(0,10);
@@ -1335,8 +1546,9 @@ function renderTrabajadorDetalle(content, id){
   document.getElementById('back-btn').onclick = ()=> history.back();
   document.getElementById('td-edit').onclick = ()=>openTrabajadorFormModal(t.id, ()=>renderTrabajadorDetalle(content,id));
   document.getElementById('td-del').onclick = ()=>{
-    confirmDialog(`¿Eliminar al trabajador ${escapeHtml(t.nombre)}${t.telefono ? ' ('+t.telefono+')' : ''}?`, ()=>{
-      t.activo=0; save(); toast('Trabajador eliminado'); location.hash='#/trabajadores';
+    confirmDialog(`¿Eliminar al trabajador ${escapeHtml(t.nombre)}${t.telefono ? ' ('+escapeHtml(t.telefono)+')' : ''}?`, ()=>{
+      eliminarConDeshacer('Trabajador eliminado', ()=>{ t.activo=0; save(); });
+      location.hash='#/trabajadores';
     });
   };
   document.getElementById('td-registrar').onclick = ()=> location.hash = `#/envio-trabajador/${id}`;
@@ -1348,12 +1560,14 @@ function renderTrabajadorDetalle(content, id){
 function renderEnvioTrabajadorForm(content, trabajadorId){
   const t = DB.trabajadores.find(x=>x.id===trabajadorId);
   if(!t){ content.innerHTML = emptyState('❓','Trabajador no encontrado'); return; }
-  content.innerHTML = envioFormHtml({titulo:'Envío de trabajador', entityLabel:'Trabajador', entityName:t.nombre, showEntityPicker:false});
+  const prefill = tomarDuplicadoEnvio('trabajador');
+  content.innerHTML = envioFormHtml({titulo:'Envío de trabajador', entityLabel:'Trabajador', entityName:t.nombre, showEntityPicker:false, prefill});
   wireEnvioForm(content, {
     tipo:'trabajador',
     getEntity: ()=>t,
     setEntity: ()=>{},
     entityRequired:false,
+    prefill,
     onSaved: ()=>{ renderEnvioTrabajadorForm(content, trabajadorId); }
   });
 }
@@ -1363,46 +1577,52 @@ function renderEnvioTrabajadorForm(content, trabajadorId){
  * ---------------------------------------------------------------------- */
 function renderPrecioEspecialForm(content){
   let entity = null, entityTipo = null;
+  const p = tomarDuplicadoEnvio('precio_especial');
+  const val = (v)=> (v===null || v===undefined) ? '' : escapeHtml(String(v));
+  if(p){
+    if(p.trabajador_id){ entity = DB.trabajadores.find(t=>t.id===p.trabajador_id && t.activo) || null; entityTipo = entity ? 'trabajador' : null; }
+    else if(p.cliente_id){ entity = DB.clientes.find(c=>c.id===p.cliente_id && c.activo) || null; entityTipo = entity ? 'cliente' : null; }
+  }
+  const forma = p ? p.forma_ganancia : 'Efectivo';
   content.innerHTML = `
     <h1 class="section-title">⭐ Precio especial</h1>
+    ${p ? `<div class="badge badge-gold" style="margin:-4px 0 6px;">📋 Duplicado — revise y guarde como envío nuevo</div>` : ''}
 
     <label class="field-label">Cliente o trabajador *</label>
     <div class="picker" id="pe-entity-picker">
-      <span id="pe-entity-name" class="ph">Toca para seleccionar...</span>
+      <span id="pe-entity-name" class="${entity?'':'ph'}">${entity ? `${entityTipo==='trabajador'?'👷 ':''}${escapeHtml(entity.nombre)}` : 'Toca para seleccionar...'}</span>
       <span>🔍</span>
     </div>
 
     <label class="field-label">Cantidad enviada *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="pe-cantidad" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="pe-cantidad" placeholder="0.00" value="${val(p?.cantidad_enviada)}">
 
     <label class="field-label">Moneda *</label>
-    <select id="pe-moneda" class="picker">${monedaOptionsHtml('USD')}</select>
+    <select id="pe-moneda" class="picker">${monedaOptionsHtml(p ? p.moneda : 'USD')}</select>
 
     <label class="field-label">Precio *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="pe-precio" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="pe-precio" placeholder="0.00" value="${val(p?.precio)}">
 
     <label class="field-label">Cantidad pagada (Entregar) *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="pe-pagada" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="pe-pagada" placeholder="0.00" value="${val(p?.cantidad_pagada)}">
     <div class="hint">Editable manualmente. No hay cálculo automático.</div>
 
     <label class="field-label">Divisa de entrega *</label>
-    <select id="pe-divisa-entrega" class="picker">${divisaOptionsHtml('')}</select>
+    <select id="pe-divisa-entrega" class="picker">${divisaOptionsHtml(p ? p.divisa_entrega : '')}</select>
 
     <label class="field-label">Cotizado a</label>
-    <input type="number" inputmode="decimal" step="0.01" id="pe-cotizado" placeholder="Opcional — informativo">
+    <input type="number" inputmode="decimal" step="0.01" id="pe-cotizado" placeholder="Opcional — informativo" value="${val(p?.cotizado_a)}">
 
     <label class="field-label">Ganancia *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="pe-ganancia" placeholder="0.00">
+    <input type="number" inputmode="decimal" step="0.01" id="pe-ganancia" placeholder="0.00" value="${val(p?.ganancia)}">
     <div class="hint">Editable manualmente. No hay cálculo automático. Puede ser negativa.</div>
 
     <label class="field-label">Divisa de ganancia *</label>
-    <select id="pe-divisa-ganancia" class="picker">${divisaOptionsHtml('')}</select>
+    <select id="pe-divisa-ganancia" class="picker">${divisaOptionsHtml(p ? p.divisa_ganancia : '')}</select>
 
     <label class="field-label">Forma de ganancia *</label>
     <div class="pill-row" id="pe-forma">
-      <div class="pill active" data-v="Efectivo">Efectivo</div>
-      <div class="pill" data-v="Transferencia">Transferencia</div>
-      <div class="pill" data-v="USD">USD</div>
+      ${['Efectivo','Transferencia','USD'].map(f=>`<div class="pill ${forma===f?'active':''}" data-v="${f}">${f}</div>`).join('')}
     </div>
 
     <label class="field-label">Fecha y hora del envío *</label>
@@ -1410,7 +1630,7 @@ function renderPrecioEspecialForm(content){
     <div class="hint">Por defecto es la fecha y hora actual. Puede ajustarla.</div>
 
     <label class="field-label">Nota</label>
-    <textarea id="pe-nota" maxlength="500" placeholder="Opcional"></textarea>
+    <textarea id="pe-nota" maxlength="500" placeholder="Opcional">${p ? escapeHtml(p.nota||'') : ''}</textarea>
 
     <button class="btn btn-primary btn-block" id="pe-revisar" style="margin-top:22px;">Revisar y guardar</button>
   `;
@@ -1428,13 +1648,14 @@ function renderPrecioEspecialForm(content){
   bindAddOnSelect(document.getElementById('pe-divisa-entrega'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(document.getElementById('pe-divisa-ganancia'), addDivisa, divisaOptionsHtml);
 
-  let formaGanancia = 'Efectivo';
-  document.querySelectorAll('#pe-forma .pill').forEach(p=>{
-    p.onclick = ()=>{
+  let formaGanancia = forma || 'Efectivo';
+  document.querySelectorAll('#pe-forma .pill').forEach(pill=>{
+    pill.onclick = ()=>{
       document.querySelectorAll('#pe-forma .pill').forEach(x=>x.classList.remove('active'));
-      p.classList.add('active'); formaGanancia = p.dataset.v;
+      pill.classList.add('active'); formaGanancia = pill.dataset.v;
     };
   });
+  if(p && !entity) toast('El cliente o trabajador original ya no existe. Seleccione otro.');
 
   document.getElementById('pe-revisar').onclick = ()=>{
     if(!entity){ toast('Debe seleccionar al menos un cliente o un trabajador.'); return; }
@@ -1470,7 +1691,7 @@ function renderPrecioEspecialForm(content){
       openModal(`
         <div class="modal-title">Estás registrando un envío especial.</div>
         <div class="modal-msg">La ganancia será de <strong>${fmtMoney(ganancia)} ${escapeHtml(divisa_ganancia)}</strong>. Forma de ganancia: <strong>${escapeHtml(formaGanancia)}</strong>.</div>
-        <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;">
+        <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
           <div class="sumrow"><span class="k">${entityTipo==='trabajador'?'Trabajador':'Cliente'}</span><span class="v">${escapeHtml(entity.nombre)}</span></div>
           <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(cantidad_enviada)} ${escapeHtml(moneda)}</span></div>
           <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(precio)}</span></div>
@@ -1501,6 +1722,143 @@ function renderPrecioEspecialForm(content){
       goToSummary();
     }
   };
+}
+
+/* ---------------------------------------------------------------------- *
+ * 12b. PAGINACIÓN DE LISTADOS (10 por página)
+ *      El estado de cada listado vive aquí, fuera de la pantalla, para que
+ *      la página se recuerde al entrar a un detalle y volver.
+ * ---------------------------------------------------------------------- */
+const TAM_PAGINA = 10;
+const paginacion = {
+  historial:        {actual:1, antesDeFiltros:1, habiaFiltros:false},
+  ventas:           {actual:1},
+  compras:          {actual:1},
+  gastos:           {actual:1},
+  in_out:           {actual:1},
+  deudas_historial: {actual:1},
+};
+
+// Orden determinista: por fecha descendente y, a igual fecha, por id
+// descendente (así un ítem nunca "salta" de una página a otra).
+function ordenFechaDesc(a, b){ return (b.fecha_hora||0)-(a.fecha_hora||0) || (b.id||0)-(a.id||0); }
+
+function paginarArray(lista, estado, tam=TAM_PAGINA){
+  const totalPaginas = Math.max(1, Math.ceil(lista.length/tam));
+  // Si la página actual dejó de existir (se borró o archivó el último
+  // registro de la última página), se pasa a la última disponible.
+  if(estado.actual > totalPaginas) estado.actual = totalPaginas;
+  if(!(estado.actual >= 1)) estado.actual = 1;
+  const ini = (estado.actual-1)*tam;
+  return {
+    items: lista.slice(ini, ini+tam), totalPaginas, total: lista.length,
+    desde: lista.length ? ini+1 : 0, hasta: Math.min(ini+tam, lista.length)
+  };
+}
+
+// Páginas a mostrar: todas si son ≤ 7; si no, la primera, la última y una
+// alrededor de la actual (… solo cuando se salta más de una página).
+function paginasVisibles(actual, total){
+  if(total <= 7) return Array.from({length:total}, (_,i)=>i+1);
+  const set = new Set([1, total, actual-1, actual, actual+1]);
+  const nums = [...set].filter(n=>n>=1 && n<=total).sort((a,b)=>a-b);
+  const out = [];
+  nums.forEach((n,i)=>{
+    if(i>0){
+      const gap = n - nums[i-1];
+      if(gap === 2) out.push(n-1);      // falta una sola: se muestra el número
+      else if(gap > 2) out.push('…');
+    }
+    out.push(n);
+  });
+  return out;
+}
+
+function scrollAlInicioDeLista(listEl){
+  if(!listEl) return;
+  const topbar = document.querySelector('.topbar');
+  const offset = (topbar ? topbar.getBoundingClientRect().height : 56) + 8;
+  const y = listEl.getBoundingClientRect().top + getScrollY() - offset;
+  window.scrollTo(0, Math.max(0, y));
+}
+
+function renderControlPaginacion(contenedor, estado, pag, onCambio, listEl){
+  if(!contenedor) return;
+  if(pag.total <= TAM_PAGINA){ contenedor.innerHTML = ''; return; }
+  const {totalPaginas} = pag;
+  const actual = estado.actual;
+  const permiteSalto = totalPaginas > 7;
+  contenedor.innerHTML = `
+    <div class="pag-wrap">
+      <div class="subtle pag-info">Mostrando ${pag.desde}–${pag.hasta} de ${pag.total}</div>
+      <div class="pag">
+        <button class="pag-btn" data-go="${actual-1}" ${actual<=1?'disabled':''} aria-label="Página anterior">‹</button>
+        ${paginasVisibles(actual, totalPaginas).map(n=> n==='…'
+          ? `<span class="pag-dots">…</span>`
+          : `<button class="pag-btn ${n===actual?'active':''}" data-go="${n}" ${n===actual && permiteSalto ? 'data-salto="1" title="Toque para ir a una página"' : ''}>${n}</button>`
+        ).join('')}
+        <button class="pag-btn" data-go="${actual+1}" ${actual>=totalPaginas?'disabled':''} aria-label="Página siguiente">›</button>
+      </div>
+    </div>`;
+  function irA(n){
+    if(n===estado.actual || n<1 || n>totalPaginas) return; // doble toque o fuera de rango: se ignora
+    estado.actual = n;
+    onCambio();
+    scrollAlInicioDeLista(listEl);
+  }
+  contenedor.querySelectorAll('.pag-btn').forEach(btn=>{
+    btn.onclick = ()=>{
+      if(btn.disabled) return;
+      const n = Number(btn.dataset.go);
+      if(btn.dataset.salto){ abrirSalto(btn); return; }
+      irA(n);
+    };
+  });
+  // Tocar el número de la página actual abre un campo para saltar a otra.
+  function abrirSalto(btn){
+    const input = document.createElement('input');
+    input.type = 'number'; input.inputMode = 'numeric';
+    input.className = 'pag-input'; input.min = 1; input.max = totalPaginas;
+    input.value = actual;
+    btn.replaceWith(input);
+    input.focus(); input.select();
+    let terminado = false;
+    function cerrarSinCambios(){
+      if(terminado) return;
+      terminado = true;
+      onCambio(); // vuelve a pintar el control con el número normal
+    }
+    input.addEventListener('keydown', (e)=>{
+      if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); cerrarSinCambios(); return; }
+      if(e.key!=='Enter') return;
+      e.preventDefault();
+      const n = Number(input.value);
+      if(!Number.isInteger(n) || n<1 || n>totalPaginas){
+        toast(`Página no válida. Escriba un número del 1 al ${totalPaginas}.`);
+        input.select();
+        return;
+      }
+      terminado = true;
+      if(n===estado.actual){ onCambio(); return; }
+      irA(n);
+    });
+    // Tocar cualquier otro control cierra el campo sin aplicar cambios.
+    input.addEventListener('blur', ()=> setTimeout(cerrarSinCambios, 0));
+  }
+}
+
+/* Reglas de página al filtrar: al pasar de "sin filtros" a "con filtros" se
+   recuerda la página en la que estaba el usuario; mientras haya filtros,
+   cada cambio vuelve a la página 1; al quitar TODOS los filtros, se vuelve a
+   la página recordada. */
+function sincronizarPaginaConFiltros(estado, filtrosActivos, huboCambio){
+  if(filtrosActivos){
+    if(!estado.habiaFiltros){ estado.antesDeFiltros = estado.actual; estado.actual = 1; }
+    else if(huboCambio) estado.actual = 1;
+  } else if(estado.habiaFiltros){
+    estado.actual = estado.antesDeFiltros || 1;
+  }
+  estado.habiaFiltros = filtrosActivos;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1540,7 +1898,14 @@ function applyHistorialFilters(list){
       if(f.fechaHasta && e.fecha_hora > f.fechaHasta) return false;
     }
     return true;
-  }).sort((a,b)=>b.fecha_hora-a.fecha_hora);
+  }).sort(ordenFechaDesc);
+}
+
+// "Personalizado" sin fechas se comporta como sin filtro de fecha.
+function historialFiltrosActivos(){
+  const f = historialFilters;
+  const fechaActiva = ['Hoy','Semanal','Mensual'].includes(f.fecha) || (f.fecha==='Personalizado' && (f.fechaDesde || f.fechaHasta));
+  return !!(normalizarTexto(f.q) || f.tipo!=='Todos' || f.forma!=='Todas' || f.divisa!=='Todas' || fechaActiva);
 }
 
 function renderHistorial(content, presetParam){
@@ -1573,12 +1938,23 @@ function renderHistorial(content, presetParam){
       </select>
     </div>
     <div id="h-list"></div>
+    <div id="h-pag"></div>
   `;
+
+  const estadoPag = paginacion.historial;
+  sincronizarPaginaConFiltros(estadoPag, historialFiltrosActivos(), false);
+  function cambioDeFiltro(){
+    sincronizarPaginaConFiltros(estadoPag, historialFiltrosActivos(), true);
+    refreshList();
+  }
 
   function refreshList(){
     const list = applyHistorialFilters(DB.envios);
     const el = document.getElementById('h-list');
-    el.innerHTML = list.length ? list.map(envioRowHtml).join('') : emptyState('📭','No se encontraron envíos con los filtros aplicados.');
+    const pag = paginarArray(list, estadoPag);
+    el.innerHTML = list.length ? pag.items.map(envioRowHtml).join('') : emptyState('📭','No se encontraron envíos con los filtros aplicados.');
+    aplicarZebra(el, list.length);
+    renderControlPaginacion(document.getElementById('h-pag'), estadoPag, pag, refreshList, el);
     el.querySelectorAll('.list-item').forEach(li=>{
       li.onclick = (ev)=>{
         if(ev.target.closest('.edit-btn')) return;
@@ -1593,22 +1969,38 @@ function renderHistorial(content, presetParam){
     });
   }
 
-  document.getElementById('h-search').addEventListener('input', e=>{ historialFilters.q = e.target.value; refreshList(); });
+  const searchEl = document.getElementById('h-search');
+  searchEl.addEventListener('input', e=>{ historialFilters.q = e.target.value; cambioDeFiltro(); });
+  activarSugerencias(searchEl, {
+    // Solo se sugieren clientes y trabajadores que tienen envíos en el historial.
+    obtenerCandidatos: ()=>{
+      const conEnvios = DB.envios.filter(e=>!e.archivado);
+      const idsCli = new Set(conEnvios.filter(e=>!e.trabajador_id && e.cliente_id!=null).map(e=>e.cliente_id));
+      const idsTr = new Set(conEnvios.filter(e=>e.trabajador_id).map(e=>e.trabajador_id));
+      return [
+        ...DB.clientes.filter(c=>idsCli.has(c.id)).map(c=>({nombre:c.nombre, sub:c.pais||''})),
+        ...DB.trabajadores.filter(t=>idsTr.has(t.id)).map(t=>({nombre:t.nombre, sub:'Trabajador', avatar:'👷'})),
+      ];
+    },
+    onElegir: ()=>{ historialFilters.q = searchEl.value; cambioDeFiltro(); }
+  });
   document.querySelectorAll('#h-tipo-chips .chip').forEach(c=>{
-    c.onclick = ()=>{ historialFilters.tipo = c.dataset.v; document.querySelectorAll('#h-tipo-chips .chip').forEach(x=>x.classList.remove('active')); c.classList.add('active'); refreshList(); };
+    c.onclick = ()=>{ historialFilters.tipo = c.dataset.v; document.querySelectorAll('#h-tipo-chips .chip').forEach(x=>x.classList.remove('active')); c.classList.add('active'); cambioDeFiltro(); };
   });
   document.querySelectorAll('#h-fecha-chips .chip').forEach(c=>{
     c.onclick = ()=>{
       historialFilters.fecha = c.dataset.v;
       document.querySelectorAll('#h-fecha-chips .chip').forEach(x=>x.classList.remove('active')); c.classList.add('active');
       document.getElementById('h-custom-range').style.display = c.dataset.v==='Personalizado' ? 'grid' : 'none';
-      refreshList();
+      cambioDeFiltro();
     };
   });
-  document.getElementById('h-desde').addEventListener('change', e=>{ historialFilters.fechaDesde = e.target.value ? new Date(e.target.value).getTime() : null; refreshList(); });
-  document.getElementById('h-hasta').addEventListener('change', e=>{ historialFilters.fechaHasta = e.target.value ? new Date(e.target.value).getTime()+86399999 : null; refreshList(); });
-  document.getElementById('h-forma').addEventListener('change', e=>{ historialFilters.forma = e.target.value; refreshList(); });
-  document.getElementById('h-divisa').addEventListener('change', e=>{ historialFilters.divisa = e.target.value; refreshList(); });
+  // Fechas del filtro con componentes LOCALES (new Date('AAAA-MM-DD') sería
+  // medianoche UTC y en Cuba/Miami correría el rango un día).
+  document.getElementById('h-desde').addEventListener('change', e=>{ historialFilters.fechaDesde = e.target.value ? fechaInputAInicioDeDiaLocal(e.target.value) : null; cambioDeFiltro(); });
+  document.getElementById('h-hasta').addEventListener('change', e=>{ historialFilters.fechaHasta = e.target.value ? fechaInputAFinDeDiaLocal(e.target.value) : null; cambioDeFiltro(); });
+  document.getElementById('h-forma').addEventListener('change', e=>{ historialFilters.forma = e.target.value; cambioDeFiltro(); });
+  document.getElementById('h-divisa').addEventListener('change', e=>{ historialFilters.divisa = e.target.value; cambioDeFiltro(); });
 
   refreshList();
 }
@@ -1656,27 +2048,59 @@ function renderEnvioDetalle(content, id){
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary btn-block" id="ed-edit">✏️ Editar envío</button>
+      <button class="btn btn-primary btn-block" id="ed-duplicar">📋 Duplicar</button>
     </div>
   `;
   document.getElementById('ed-aceptar').onclick = volverDesdeEnvioDetalle;
+  document.getElementById('ed-duplicar').onclick = ()=> duplicarEnvio(e.id);
   document.getElementById('ed-edit').onclick = ()=>{
     openEnvioEditModal(e.id, ()=>renderEnvioDetalle(content, id));
   };
   document.getElementById('ed-del').onclick = ()=>{
     confirmDialog(`¿Eliminar el envío de ${escapeHtml(nombreEntidad)}?`, ()=>{
-      const deudaAsociada = DB.deudas.find(d=>d.origen==='envio' && d.origen_id===e.id);
-      applyEnvioBalance(e, -1, deudaAsociada);
-      if(deudaAsociada){
-        if(deudaAsociada.estado==='pagado') adjustBalance(deudaAsociada.divisa, deudaAsociada.monto);
-        DB.deudas = DB.deudas.filter(x=>x.id!==deudaAsociada.id);
-      }
-      DB.envios = DB.envios.filter(x=>x.id!==e.id);
-      save();
-      toast('Envío eliminado');
+      eliminarConDeshacer('Envío eliminado', ()=>{
+        const deudaAsociada = DB.deudas.find(d=>d.origen==='envio' && d.origen_id===e.id);
+        applyEnvioBalance(e, -1, deudaAsociada);
+        if(deudaAsociada){
+          // Solo se devuelve el pago si al pagarlo se restó del balance
+          // (divisa de entrega distinta de la de ganancia; ver "dd-cerrar").
+          if(deudaEnvioPagadaRestoBalance(deudaAsociada, e)) adjustBalance(deudaAsociada.divisa, deudaAsociada.monto);
+          DB.deudas = DB.deudas.filter(x=>x.id!==deudaAsociada.id);
+        }
+        DB.envios = DB.envios.filter(x=>x.id!==e.id);
+        save();
+      });
       retornoHistorialDivisa = null;
       location.hash = '#/historial';
     });
   };
+}
+
+/* ¿Al marcar como pagada esta deuda de envío se restó su monto del balance?
+   Solo si la divisa entregada es DISTINTA de la divisa de la ganancia (si es
+   la misma, pagarla no toca el balance). Se evalúa con los datos del envío
+   que se pasen, para poder usarla antes y después de editarlo. */
+function deudaEnvioPagadaRestoBalance(deuda, envio){
+  return !!deuda && deuda.estado==='pagado' && !!envio && !mismasDivisas(envio.divisa_entrega, envio.divisa_ganancia);
+}
+
+function duplicarEnvio(id){
+  const e = DB.envios.find(x=>x.id===id);
+  if(!e){ alertDialog('No se pudo duplicar', 'No se pudo duplicar porque el registro original ya no existe.'); return; }
+  const copia = copiaParaDuplicar(e);
+  retornoHistorialDivisa = null;
+  if(e.tipo==='trabajador'){
+    const t = DB.trabajadores.find(x=>x.id===e.trabajador_id && x.activo);
+    if(!t){ alertDialog('No se pudo duplicar', 'El trabajador de este envío fue eliminado.'); return; }
+    duplicadoEnvioPendiente = {tipo:'trabajador', envio:copia};
+    location.hash = `#/envio-trabajador/${t.id}`;
+  } else if(e.tipo==='precio_especial'){
+    duplicadoEnvioPendiente = {tipo:'precio_especial', envio:copia};
+    location.hash = '#/precio-especial';
+  } else {
+    duplicadoEnvioPendiente = {tipo:'cliente_directo', envio:copia};
+    location.hash = '#/envio';
+  }
 }
 
 /* ---------------------------------------------------------------------- *
@@ -1847,7 +2271,10 @@ function guardarEdicionEnvio(e, nuevo){
   const newDescuentaAhora = !!nuevo.descuenta_ahora;
 
   applyEnvioBalance(e, -1, deudaExistente);
-  if(deudaExistente && deudaExistente.estado==='pagado'){
+  // Se revierte el pago de la deuda SOLO si al pagarla se restó del balance
+  // (antes se revertía siempre y, con la misma divisa de entrega y de
+  // ganancia, el saldo quedaba descuadrado).
+  if(deudaEnvioPagadaRestoBalance(deudaExistente, e)){
     adjustBalance(deudaExistente.divisa, deudaExistente.monto);
   }
 
@@ -1878,7 +2305,7 @@ function guardarEdicionEnvio(e, nuevo){
     deudaExistente.divisa = e.divisa_entrega;
     deudaExistente.fecha = e.fecha_hora;
     deudaExistente.nota = e.nota || 'Registrado desde envío';
-    if(deudaExistente.estado==='pagado'){
+    if(deudaEnvioPagadaRestoBalance(deudaExistente, e)){
       adjustBalance(deudaExistente.divisa, -deudaExistente.monto);
     }
   } else {
@@ -1899,28 +2326,82 @@ function guardarEdicionEnvio(e, nuevo){
 
 
 /* ---------------------------------------------------------------------- *
- * 14. MENÚ 7 — VENTAS (con switch "deuda pendiente")
+ * 14. LISTADOS PAGINADOS: VENTAS, COMPRAS, GASTOS, IN/OUT
+ *     Los cuatro comparten la misma estructura: botón "Nuevo", lista
+ *     paginada (10 por página, fecha descendente) y detalle en un modal.
+ * ---------------------------------------------------------------------- */
+function renderListadoPaginado(content, cfg){
+  const estado = paginacion[cfg.clave];
+  content.innerHTML = `
+    <h1 class="section-title">${cfg.titulo}</h1>
+    ${cfg.intro || ''}
+    <button class="btn btn-gold btn-block" id="${cfg.prefijo}-nuevo">${cfg.textoNuevo}</button>
+    <div style="height:14px;"></div>
+    <div id="${cfg.prefijo}-list"></div>
+    <div id="${cfg.prefijo}-pag"></div>
+  `;
+  const listEl = document.getElementById(`${cfg.prefijo}-list`);
+  function refresh(){
+    if(!document.body.contains(listEl)) return; // el usuario ya cambió de pantalla
+    const items = DB[cfg.clave].filter(r=>!r.archivado).sort(ordenFechaDesc);
+    const pag = paginarArray(items, estado);
+    listEl.innerHTML = items.length ? pag.items.map(cfg.rowHtml).join('') : emptyState(cfg.vacioIcono, cfg.vacioTexto);
+    aplicarZebra(listEl, items.length);
+    renderControlPaginacion(document.getElementById(`${cfg.prefijo}-pag`), estado, pag, refresh, listEl);
+    listEl.querySelectorAll('.list-item').forEach(el=>{
+      el.onclick = (ev)=>{
+        if(ev.target.closest('.edit-btn')) return;
+        cfg.abrirDetalle(Number(el.dataset.id), refresh, {alCrear: irAPaginaUno});
+      };
+    });
+    listEl.querySelectorAll('.edit-btn').forEach(btn=>{
+      btn.onclick = (ev)=>{
+        ev.stopPropagation();
+        cfg.abrirEdicion(Number(btn.dataset.id), refresh);
+      };
+    });
+  }
+  // Un registro nuevo creado DESDE este listado lleva a la página 1 para verlo.
+  function irAPaginaUno(){ estado.actual = 1; refresh(); }
+  document.getElementById(`${cfg.prefijo}-nuevo`).onclick = ()=> cfg.abrirFormulario(irAPaginaUno);
+  refresh();
+}
+
+/* ---- Duplicar: precarga de formularios de creación ----
+   Rellena los campos (inputs/selects por id) y marca la opción activa de
+   los selectores de "pastillas". La fecha NUNCA se copia: el formulario
+   ya trae la fecha y hora actual. */
+function precargarFormularioConDatos(campos, pills){
+  Object.entries(campos||{}).forEach(([id, v])=>{
+    const el = document.getElementById(id);
+    if(!el || v===undefined || v===null) return;
+    if(el.tagName==='SELECT' && ![...el.options].some(o=>o.value===String(v))) return; // la divisa ya no existe
+    el.value = v;
+  });
+  Object.entries(pills||{}).forEach(([contenedorId, v])=>{
+    document.querySelectorAll(`#${contenedorId} .pill`).forEach(p=> p.classList.toggle('active', p.dataset.v===String(v)));
+  });
+}
+function avisoDuplicadoHtml(){
+  return `<div class="badge badge-gold" style="margin:4px 0 2px;">📋 Duplicado — se guardará como un registro nuevo</div>`;
+}
+// Copia de un registro para duplicarlo: sin id, sin archivado ni fechas
+// propias; la deuda asociada NUNCA se copia (el nuevo crea la suya al guardar).
+function copiaParaDuplicar(registro){
+  const c = JSON.parse(JSON.stringify(registro));
+  delete c.id; delete c.archivado; delete c.archivado_en; delete c.fecha_hora;
+  return c;
+}
+
+/* ---------------------------------------------------------------------- *
+ * 14a. MENÚ 7 — VENTAS (con switch "deuda pendiente")
  * ---------------------------------------------------------------------- */
 function renderVentasList(content){
-  const items = DB.ventas.filter(v=>!v.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
-  content.innerHTML = `
-    <h1 class="section-title">Ventas</h1>
-    <button class="btn btn-gold btn-block" id="v-nueva">➕ Nueva venta</button>
-    <div style="height:14px;"></div>
-    <div id="v-list">${items.length ? items.map(ventaRowHtml).join('') : emptyState('💱','Aún no hay ventas registradas')}</div>
-  `;
-  document.getElementById('v-nueva').onclick = ()=>openVentaForm(()=>renderVentasList(content));
-  content.querySelectorAll('#v-list .list-item').forEach(el=>{
-    el.onclick = (ev)=>{
-      if(ev.target.closest('.edit-btn')) return;
-      openVentaDetalle(Number(el.dataset.id), ()=>renderVentasList(content));
-    };
-  });
-  content.querySelectorAll('#v-list .edit-btn').forEach(btn=>{
-    btn.onclick = (ev)=>{
-      ev.stopPropagation();
-      openVentaEditModal(Number(btn.dataset.id), ()=>renderVentasList(content));
-    };
+  renderListadoPaginado(content, {
+    clave:'ventas', prefijo:'v', titulo:'Ventas', textoNuevo:'➕ Nueva venta',
+    rowHtml: ventaRowHtml, vacioIcono:'💱', vacioTexto:'Aún no hay ventas registradas',
+    abrirFormulario: (onSaved)=>openVentaForm(onSaved),
+    abrirDetalle: openVentaDetalle, abrirEdicion: openVentaEditModal,
   });
 }
 function ventaEstado(v){
@@ -1940,9 +2421,10 @@ function ventaRowHtml(v){
       <button class="icon-action-btn edit-btn" data-id="${v.id}" aria-label="Editar venta">✏️</button>
     </div>`;
 }
-function openVentaForm(onSaved){
+function openVentaForm(onSaved, prefill){
   openModal(`
     <div class="modal-title">Registrar venta</div>
+    ${prefill ? avisoDuplicadoHtml() : ''}
     <label class="field-label">Cantidad vendida *</label>
     <input type="number" inputmode="decimal" step="0.01" id="vf-cvendida" placeholder="0.00">
     <label class="field-label">Divisa vendida *</label>
@@ -1967,9 +2449,14 @@ function openVentaForm(onSaved){
       <button class="btn btn-primary btn-block" id="vf-save">Guardar</button>
     </div>
   `);
+  if(prefill){
+    precargarFormularioConDatos(
+      {'vf-cvendida':prefill.cantidad_vendida, 'vf-dvendida':prefill.divisa_vendida, 'vf-crecibida':prefill.cantidad_recibida, 'vf-drecibida':prefill.divisa_recibida, 'vf-nota':prefill.nota||''},
+      {'vf-switch': prefill.registra_deuda ? 1 : 0});
+  }
   bindAddOnSelect(document.getElementById('vf-dvendida'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(document.getElementById('vf-drecibida'), addDivisa, divisaOptionsHtml);
-  let registraDeuda = 0;
+  let registraDeuda = prefill && prefill.registra_deuda ? 1 : 0;
   document.querySelectorAll('#vf-switch .pill').forEach(p=>{
     p.onclick = ()=>{
       document.querySelectorAll('#vf-switch .pill').forEach(x=>x.classList.remove('active'));
@@ -2005,12 +2492,12 @@ function openVentaForm(onSaved){
     onSaved && onSaved();
   };
 }
-function openVentaDetalle(id, onChange){
+function openVentaDetalle(id, onChange, opts={}){
   const v = DB.ventas.find(x=>x.id===id);
   if(!v) return;
   openModal(`
     <div class="modal-title">Detalle de venta</div>
-    <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;">
+    <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
       <div class="sumrow"><span class="k">Cantidad vendida</span><span class="v">${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)}</span></div>
       <div class="sumrow"><span class="k">Cantidad recibida</span><span class="v">${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(v.fecha_hora)}</span></div>
@@ -2022,9 +2509,11 @@ function openVentaDetalle(id, onChange){
       <button class="btn btn-danger btn-block" id="vd-del">Eliminar</button>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary btn-block" id="vd-edit">✏️ Editar venta</button>
+      <button class="btn btn-primary btn-block" id="vd-edit">✏️ Editar</button>
+      <button class="btn btn-primary btn-block" id="vd-duplicar">📋 Duplicar</button>
     </div>
   `);
+  document.getElementById('vd-duplicar').onclick = ()=> duplicarVenta(v.id, opts.alCrear || onChange);
   document.getElementById('vd-edit').onclick = ()=>{
     closeModal();
     openVentaEditModal(v.id, onChange);
@@ -2032,7 +2521,7 @@ function openVentaDetalle(id, onChange){
   document.getElementById('vd-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('vd-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar la venta de ${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}?`, ()=>{
+    confirmDialog(`¿Eliminar la venta de ${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}?`, ()=> eliminarConDeshacer('Venta eliminada', ()=>{
       adjustBalance(v.divisa_vendida, v.cantidad_vendida);
       if(v.registra_deuda){
         const deudaAsociada = DB.deudas.find(d=>d.origen==='venta' && d.origen_id===v.id);
@@ -2044,9 +2533,16 @@ function openVentaDetalle(id, onChange){
         adjustBalance(v.divisa_recibida, -v.cantidad_recibida);
       }
       DB.ventas = DB.ventas.filter(x=>x.id!==id);
-      save(); toast('Venta eliminada'); onChange && onChange();
-    });
+      save(); onChange && onChange();
+    }));
   };
+}
+
+function duplicarVenta(id, onSaved){
+  const v = DB.ventas.find(x=>x.id===id);
+  if(!v){ closeModal(); alertDialog('No se pudo duplicar', 'No se pudo duplicar porque el registro original ya no existe.'); return; }
+  closeModal();
+  openVentaForm(onSaved, copiaParaDuplicar(v));
 }
 
 function openVentaEditModal(id, onSaved){
@@ -2136,25 +2632,11 @@ function guardarEdicionVenta(v, nuevo){
  * 14b. MENÚ 6 — COMPRAS
  * ---------------------------------------------------------------------- */
 function renderComprasList(content){
-  const items = DB.compras.filter(c=>!c.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
-  content.innerHTML = `
-    <h1 class="section-title">Compras</h1>
-    <button class="btn btn-gold btn-block" id="c-nueva">➕ Nueva compra</button>
-    <div style="height:14px;"></div>
-    <div id="c-list">${items.length ? items.map(compraRowHtml).join('') : emptyState('🛒','Aún no hay compras registradas')}</div>
-  `;
-  document.getElementById('c-nueva').onclick = ()=>openCompraForm(()=>renderComprasList(content));
-  content.querySelectorAll('#c-list .list-item').forEach(el=>{
-    el.onclick = (ev)=>{
-      if(ev.target.closest('.edit-btn')) return;
-      openCompraDetalle(Number(el.dataset.id), ()=>renderComprasList(content));
-    };
-  });
-  content.querySelectorAll('#c-list .edit-btn').forEach(btn=>{
-    btn.onclick = (ev)=>{
-      ev.stopPropagation();
-      openCompraEditModal(Number(btn.dataset.id), ()=>renderComprasList(content));
-    };
+  renderListadoPaginado(content, {
+    clave:'compras', prefijo:'c', titulo:'Compras', textoNuevo:'➕ Nueva compra',
+    rowHtml: compraRowHtml, vacioIcono:'🛒', vacioTexto:'Aún no hay compras registradas',
+    abrirFormulario: (onSaved)=>openCompraForm(onSaved),
+    abrirDetalle: openCompraDetalle, abrirEdicion: openCompraEditModal,
   });
 }
 function compraRowHtml(c){
@@ -2168,9 +2650,10 @@ function compraRowHtml(c){
       <button class="icon-action-btn edit-btn" data-id="${c.id}" aria-label="Editar compra">✏️</button>
     </div>`;
 }
-function openCompraForm(onSaved){
+function openCompraForm(onSaved, prefill){
   openModal(`
     <div class="modal-title">Registrar compra</div>
+    ${prefill ? avisoDuplicadoHtml() : ''}
     <label class="field-label">Cantidad comprada *</label>
     <input type="number" inputmode="decimal" step="0.01" id="cf-ccomprada" placeholder="0.00">
     <label class="field-label">Divisa comprada *</label>
@@ -2195,9 +2678,14 @@ function openCompraForm(onSaved){
       <button class="btn btn-primary btn-block" id="cf-save">Guardar</button>
     </div>
   `);
+  if(prefill){
+    precargarFormularioConDatos(
+      {'cf-ccomprada':prefill.cantidad_comprada, 'cf-dcomprada':prefill.divisa_comprada, 'cf-cpagada':prefill.cantidad_pagada, 'cf-dpagada':prefill.divisa_pagada, 'cf-nota':prefill.nota||''},
+      {'cf-switch': prefill.registra_deuda ? 1 : 0});
+  }
   bindAddOnSelect(document.getElementById('cf-dcomprada'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(document.getElementById('cf-dpagada'), addDivisa, divisaOptionsHtml);
-  let registraDeuda = 0;
+  let registraDeuda = prefill && prefill.registra_deuda ? 1 : 0;
   document.querySelectorAll('#cf-switch .pill').forEach(p=>{
     p.onclick = ()=>{
       document.querySelectorAll('#cf-switch .pill').forEach(x=>x.classList.remove('active'));
@@ -2233,12 +2721,12 @@ function openCompraForm(onSaved){
     onSaved && onSaved();
   };
 }
-function openCompraDetalle(id, onChange){
+function openCompraDetalle(id, onChange, opts={}){
   const c = DB.compras.find(x=>x.id===id);
   if(!c) return;
   openModal(`
     <div class="modal-title">Detalle de compra</div>
-    <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;">
+    <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
       <div class="sumrow"><span class="k">Cantidad comprada</span><span class="v">${fmtMoney(c.cantidad_comprada)} ${escapeHtml(c.divisa_comprada)}</span></div>
       <div class="sumrow"><span class="k">Cantidad pagada</span><span class="v">${fmtMoney(c.cantidad_pagada)} ${escapeHtml(c.divisa_pagada)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(c.fecha_hora)}</span></div>
@@ -2250,9 +2738,11 @@ function openCompraDetalle(id, onChange){
       <button class="btn btn-danger btn-block" id="cd2-del">Eliminar</button>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary btn-block" id="cd2-edit">✏️ Editar compra</button>
+      <button class="btn btn-primary btn-block" id="cd2-edit">✏️ Editar</button>
+      <button class="btn btn-primary btn-block" id="cd2-duplicar">📋 Duplicar</button>
     </div>
   `);
+  document.getElementById('cd2-duplicar').onclick = ()=> duplicarCompra(c.id, opts.alCrear || onChange);
   document.getElementById('cd2-edit').onclick = ()=>{
     closeModal();
     openCompraEditModal(c.id, onChange);
@@ -2260,7 +2750,7 @@ function openCompraDetalle(id, onChange){
   document.getElementById('cd2-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('cd2-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar la compra de ${fmtMoney(c.cantidad_pagada)} ${escapeHtml(c.divisa_pagada)} → ${fmtMoney(c.cantidad_comprada)} ${escapeHtml(c.divisa_comprada)}?`, ()=>{
+    confirmDialog(`¿Eliminar la compra de ${fmtMoney(c.cantidad_pagada)} ${escapeHtml(c.divisa_pagada)} → ${fmtMoney(c.cantidad_comprada)} ${escapeHtml(c.divisa_comprada)}?`, ()=> eliminarConDeshacer('Compra eliminada', ()=>{
       adjustBalance(c.divisa_comprada, -c.cantidad_comprada);
       if(c.registra_deuda){
         const deudaAsociada = DB.deudas.find(d=>d.origen==='compra' && d.origen_id===c.id);
@@ -2272,9 +2762,16 @@ function openCompraDetalle(id, onChange){
         adjustBalance(c.divisa_pagada, c.cantidad_pagada);
       }
       DB.compras = DB.compras.filter(x=>x.id!==id);
-      save(); toast('Compra eliminada'); onChange && onChange();
-    });
+      save(); onChange && onChange();
+    }));
   };
+}
+
+function duplicarCompra(id, onSaved){
+  const c = DB.compras.find(x=>x.id===id);
+  if(!c){ closeModal(); alertDialog('No se pudo duplicar', 'No se pudo duplicar porque el registro original ya no existe.'); return; }
+  closeModal();
+  openCompraForm(onSaved, copiaParaDuplicar(c));
 }
 
 function openCompraEditModal(id, onSaved){
@@ -2364,25 +2861,11 @@ function guardarEdicionCompra(c, nuevo){
  * 15. MENÚ 8 — GASTOS
  * ---------------------------------------------------------------------- */
 function renderGastosList(content){
-  const items = DB.gastos.filter(g=>!g.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
-  content.innerHTML = `
-    <h1 class="section-title">Gastos</h1>
-    <button class="btn btn-gold btn-block" id="g-nuevo">➕ Nuevo gasto</button>
-    <div style="height:14px;"></div>
-    <div id="g-list">${items.length ? items.map(gastoRowHtml).join('') : emptyState('🧾','Aún no hay gastos registrados')}</div>
-  `;
-  document.getElementById('g-nuevo').onclick = ()=>openGastoForm(()=>renderGastosList(content));
-  content.querySelectorAll('#g-list .list-item').forEach(el=>{
-    el.onclick = (ev)=>{
-      if(ev.target.closest('.edit-btn')) return;
-      openGastoDetalle(Number(el.dataset.id), ()=>renderGastosList(content));
-    };
-  });
-  content.querySelectorAll('#g-list .edit-btn').forEach(btn=>{
-    btn.onclick = (ev)=>{
-      ev.stopPropagation();
-      openGastoEditModal(Number(btn.dataset.id), ()=>renderGastosList(content));
-    };
+  renderListadoPaginado(content, {
+    clave:'gastos', prefijo:'g', titulo:'Gastos', textoNuevo:'➕ Nuevo gasto',
+    rowHtml: gastoRowHtml, vacioIcono:'🧾', vacioTexto:'Aún no hay gastos registrados',
+    abrirFormulario: (onSaved)=>openGastoForm(onSaved),
+    abrirDetalle: openGastoDetalle, abrirEdicion: openGastoEditModal,
   });
 }
 function gastoRowHtml(g){
@@ -2405,9 +2888,10 @@ function toLocalDatetimeValue(ts){
   const pad = n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-function openGastoForm(onSaved){
+function openGastoForm(onSaved, prefill){
   openModal(`
     <div class="modal-title">Registrar gasto</div>
+    ${prefill ? avisoDuplicadoHtml() : ''}
     <label class="field-label">Concepto o motivo *</label>
     <input type="text" id="gf-concepto" maxlength="200" placeholder="Ej: Alquiler">
     <label class="field-label">Cantidad *</label>
@@ -2423,6 +2907,9 @@ function openGastoForm(onSaved){
       <button class="btn btn-primary btn-block" id="gf-save">Guardar</button>
     </div>
   `);
+  if(prefill){
+    precargarFormularioConDatos({'gf-concepto':prefill.concepto, 'gf-cantidad':prefill.cantidad, 'gf-divisa':prefill.divisa, 'gf-nota':prefill.nota||''});
+  }
   bindAddOnSelect(document.getElementById('gf-divisa'), addDivisa, divisaOptionsHtml);
   document.getElementById('gf-cancel').onclick = closeModal;
   document.getElementById('gf-save').onclick = ()=>{
@@ -2441,12 +2928,12 @@ function openGastoForm(onSaved){
     onSaved && onSaved();
   };
 }
-function openGastoDetalle(id, onChange){
+function openGastoDetalle(id, onChange, opts={}){
   const g = DB.gastos.find(x=>x.id===id);
   if(!g) return;
   openModal(`
     <div class="modal-title">Detalle de gasto</div>
-    <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;">
+    <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
       <div class="sumrow"><span class="k">Concepto</span><span class="v">${escapeHtml(g.concepto)}</span></div>
       <div class="sumrow"><span class="k">Cantidad</span><span class="v">${fmtMoney(g.cantidad)} ${escapeHtml(g.divisa)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(g.fecha_hora)}</span></div>
@@ -2457,9 +2944,11 @@ function openGastoDetalle(id, onChange){
       <button class="btn btn-danger btn-block" id="gd-del">Eliminar</button>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary btn-block" id="gd-edit">✏️ Editar gasto</button>
+      <button class="btn btn-primary btn-block" id="gd-edit">✏️ Editar</button>
+      <button class="btn btn-primary btn-block" id="gd-duplicar">📋 Duplicar</button>
     </div>
   `);
+  document.getElementById('gd-duplicar').onclick = ()=> duplicarGasto(g.id, opts.alCrear || onChange);
   document.getElementById('gd-edit').onclick = ()=>{
     closeModal();
     openGastoEditModal(g.id, onChange);
@@ -2467,12 +2956,19 @@ function openGastoDetalle(id, onChange){
   document.getElementById('gd-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('gd-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar el gasto "${escapeHtml(g.concepto)}" por ${fmtMoney(g.cantidad)} ${escapeHtml(g.divisa)}?`, ()=>{
+    confirmDialog(`¿Eliminar el gasto "${escapeHtml(g.concepto)}" por ${fmtMoney(g.cantidad)} ${escapeHtml(g.divisa)}?`, ()=> eliminarConDeshacer('Gasto eliminado', ()=>{
       applyGastoBalance(g, -1);
       DB.gastos = DB.gastos.filter(x=>x.id!==id);
-      save(); toast('Gasto eliminado'); onChange && onChange();
-    });
+      save(); onChange && onChange();
+    }));
   };
+}
+
+function duplicarGasto(id, onSaved){
+  const g = DB.gastos.find(x=>x.id===id);
+  if(!g){ closeModal(); alertDialog('No se pudo duplicar', 'No se pudo duplicar porque el registro original ya no existe.'); return; }
+  closeModal();
+  openGastoForm(onSaved, copiaParaDuplicar(g));
 }
 
 function openGastoEditModal(id, onSaved){
@@ -2521,26 +3017,12 @@ function openGastoEditModal(id, onSaved){
  * 15b. MENÚ 9 — IN/OUT
  * ---------------------------------------------------------------------- */
 function renderInOut(content){
-  const items = DB.in_out.filter(io=>!io.archivado).sort((a,b)=>b.fecha_hora-a.fecha_hora);
-  content.innerHTML = `
-    <h1 class="section-title">In/Out</h1>
-    <div class="subtle" style="margin-bottom:12px;">Entradas y salidas manuales de divisas, sin asociarlas a un envío, compra, venta o gasto.</div>
-    <button class="btn btn-gold btn-block" id="io-nuevo">➕ Registrar movimiento</button>
-    <div style="height:14px;"></div>
-    <div id="io-list">${items.length ? items.map(inOutRowHtml).join('') : emptyState('🔄','Aún no hay movimientos registrados')}</div>
-  `;
-  document.getElementById('io-nuevo').onclick = ()=>openInOutForm(()=>renderInOut(content));
-  content.querySelectorAll('#io-list .list-item').forEach(el=>{
-    el.onclick = (ev)=>{
-      if(ev.target.closest('.edit-btn')) return;
-      openInOutDetalle(Number(el.dataset.id), ()=>renderInOut(content));
-    };
-  });
-  content.querySelectorAll('#io-list .edit-btn').forEach(btn=>{
-    btn.onclick = (ev)=>{
-      ev.stopPropagation();
-      openInOutEditModal(Number(btn.dataset.id), ()=>renderInOut(content));
-    };
+  renderListadoPaginado(content, {
+    clave:'in_out', prefijo:'io', titulo:'In/Out', textoNuevo:'➕ Registrar movimiento',
+    intro:`<div class="subtle" style="margin-bottom:12px;">Entradas y salidas manuales de divisas, sin asociarlas a un envío, compra, venta o gasto.</div>`,
+    rowHtml: inOutRowHtml, vacioIcono:'🔄', vacioTexto:'Aún no hay movimientos registrados',
+    abrirFormulario: (onSaved)=>openInOutForm(onSaved),
+    abrirDetalle: openInOutDetalle, abrirEdicion: openInOutEditModal,
   });
 }
 function inOutRowHtml(io){
@@ -2559,9 +3041,10 @@ function inOutRowHtml(io){
       <button class="icon-action-btn edit-btn" data-id="${io.id}" aria-label="Editar movimiento">✏️</button>
     </div>`;
 }
-function openInOutForm(onSaved){
+function openInOutForm(onSaved, prefill){
   openModal(`
     <div class="modal-title">Registrar In/Out</div>
+    ${prefill ? avisoDuplicadoHtml() : ''}
     <label class="field-label">Tipo de movimiento *</label>
     <div class="pill-row" id="io-tipo">
       <div class="pill active" data-v="entrada">📥 Entrada</div>
@@ -2581,8 +3064,11 @@ function openInOutForm(onSaved){
       <button class="btn btn-primary btn-block" id="io-save">Guardar</button>
     </div>
   `);
+  if(prefill){
+    precargarFormularioConDatos({'io-cantidad':prefill.cantidad, 'io-divisa':prefill.divisa, 'io-nota':prefill.nota||''}, {'io-tipo':prefill.tipo});
+  }
   bindAddOnSelect(document.getElementById('io-divisa'), addDivisa, divisaOptionsHtml);
-  let tipo = 'entrada';
+  let tipo = prefill && prefill.tipo==='salida' ? 'salida' : 'entrada';
   document.querySelectorAll('#io-tipo .pill').forEach(p=>{
     p.onclick = ()=>{
       document.querySelectorAll('#io-tipo .pill').forEach(x=>x.classList.remove('active'));
@@ -2606,13 +3092,13 @@ function openInOutForm(onSaved){
     onSaved && onSaved();
   };
 }
-function openInOutDetalle(id, onChange){
+function openInOutDetalle(id, onChange, opts={}){
   const io = DB.in_out.find(x=>x.id===id);
   if(!io) return;
   const esEntrada = io.tipo==='entrada';
   openModal(`
     <div class="modal-title">Detalle de movimiento</div>
-    <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;">
+    <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
       <div class="sumrow"><span class="k">Tipo</span><span class="v">${esEntrada?'📥 Entrada':'📤 Salida'}</span></div>
       <div class="sumrow"><span class="k">Cantidad</span><span class="v">${fmtMoney(io.cantidad)} ${escapeHtml(io.divisa)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(io.fecha_hora)}</span></div>
@@ -2623,9 +3109,11 @@ function openInOutDetalle(id, onChange){
       <button class="btn btn-danger btn-block" id="iod-del">Eliminar</button>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary btn-block" id="iod-edit">✏️ Editar movimiento</button>
+      <button class="btn btn-primary btn-block" id="iod-edit">✏️ Editar</button>
+      <button class="btn btn-primary btn-block" id="iod-duplicar">📋 Duplicar</button>
     </div>
   `);
+  document.getElementById('iod-duplicar').onclick = ()=> duplicarInOut(io.id, opts.alCrear || onChange);
   document.getElementById('iod-edit').onclick = ()=>{
     closeModal();
     openInOutEditModal(io.id, onChange);
@@ -2633,12 +3121,19 @@ function openInOutDetalle(id, onChange){
   document.getElementById('iod-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('iod-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar el movimiento ${io.tipo==='entrada'?'📥 Entrada':'📤 Salida'} de ${fmtMoney(io.cantidad)} ${escapeHtml(io.divisa)}${io.nota ? ' ('+escapeHtml(io.nota)+')' : ''}?`, ()=>{
+    confirmDialog(`¿Eliminar el movimiento ${io.tipo==='entrada'?'📥 Entrada':'📤 Salida'} de ${fmtMoney(io.cantidad)} ${escapeHtml(io.divisa)}${io.nota ? ' ('+escapeHtml(io.nota)+')' : ''}?`, ()=> eliminarConDeshacer('Movimiento eliminado', ()=>{
       adjustBalance(io.divisa, esEntrada ? -io.cantidad : io.cantidad);
       DB.in_out = DB.in_out.filter(x=>x.id!==id);
-      save(); toast('Movimiento eliminado'); onChange && onChange();
-    });
+      save(); onChange && onChange();
+    }));
   };
+}
+
+function duplicarInOut(id, onSaved){
+  const io = DB.in_out.find(x=>x.id===id);
+  if(!io){ closeModal(); alertDialog('No se pudo duplicar', 'No se pudo duplicar porque el registro original ya no existe.'); return; }
+  closeModal();
+  openInOutForm(onSaved, copiaParaDuplicar(io));
 }
 
 function openInOutEditModal(id, onSaved){
@@ -2816,7 +3311,7 @@ function renderBalance(content){
     <h1 class="section-title">Balance del negocio</h1>
     <button class="btn btn-gold btn-block" id="b-registrar-envio" style="margin-bottom:16px;">➕ Registrar envío</button>
 
-    <h3 style="font-size:14px;color:var(--teal-900);margin-bottom:8px;">Balance filtrado</h3>
+    <h3 style="font-size:14px;color:var(--heading);margin-bottom:8px;">Balance filtrado</h3>
     <div class="chip-row" id="b-period-chips">
       ${['Hoy','Semanal','Mensual','Anual','Personalizado'].map(p=>`<div class="chip ${balancePeriod===p?'active':''}" data-v="${p}">${p}</div>`).join('')}
     </div>
@@ -2827,7 +3322,7 @@ function renderBalance(content){
     <div class="bal-grid" id="b-filtered"></div>
 
     <div class="divider"></div>
-    <h3 style="font-size:14px;color:var(--teal-900);margin-bottom:8px;">Balance general (saldo acumulado)</h3>
+    <h3 style="font-size:14px;color:var(--heading);margin-bottom:8px;">Balance general (saldo acumulado)</h3>
     <div class="subtle" style="margin-bottom:10px;">Toca un saldo para editarlo manualmente. Toca el nombre para ver su historial.</div>
     <div class="two-col" style="margin-bottom:12px;">
       <button class="btn btn-outline btn-block" id="b-add-divisa">➕ Agregar divisa</button>
@@ -2893,8 +3388,8 @@ function renderBalance(content){
       refreshFiltered();
     };
   });
-  document.getElementById('b-desde').addEventListener('change', e=>{ balanceCustomDesde = e.target.value? new Date(e.target.value).getTime():null; refreshFiltered(); });
-  document.getElementById('b-hasta').addEventListener('change', e=>{ balanceCustomHasta = e.target.value? new Date(e.target.value).getTime()+86399999:null; refreshFiltered(); });
+  document.getElementById('b-desde').addEventListener('change', e=>{ balanceCustomDesde = e.target.value? fechaInputAInicioDeDiaLocal(e.target.value):null; refreshFiltered(); });
+  document.getElementById('b-hasta').addEventListener('change', e=>{ balanceCustomHasta = e.target.value? fechaInputAFinDeDiaLocal(e.target.value):null; refreshFiltered(); });
 
   document.getElementById('b-add-divisa').onclick = ()=>{
     promptText('Nueva divisa', (val)=>{
@@ -3178,7 +3673,7 @@ function openHistorialDivisa(nombre){
     if(historialDivisaFiltro==='ingresos') items = movimientos.filter(m=>m.monto>0);
     if(historialDivisaFiltro==='egresos') items = movimientos.filter(m=>m.monto<0);
     el.innerHTML = items.length ? items.map((m,i)=>`
-      <div class="card hd-mov-item" data-i="${i}" style="box-shadow:none;border:1px solid var(--line);padding:10px 12px;margin-bottom:8px;cursor:pointer;">
+      <div class="card hd-mov-item" data-i="${i}" style="box-shadow:none;border:1px solid var(--line-main);padding:10px 12px;margin-bottom:8px;cursor:pointer;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
             <div style="font-weight:700;font-size:14px;">${escapeHtml(m.tipo)}</div>
@@ -3186,12 +3681,13 @@ function openHistorialDivisa(nombre){
             <div class="subtle">${fmtDate(m.fecha)}</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-weight:800;font-size:15px;color:${m.monto<0?'var(--red)':'var(--green)'};">${m.monto<0?'-':'+'}${fmtMoney(Math.abs(m.monto))}</div>
+            <div style="font-weight:800;font-size:15px;color:${m.monto<0?'var(--red-text)':'var(--green-text)'};">${m.monto<0?'-':'+'}${fmtMoney(Math.abs(m.monto))}</div>
             <div class="subtle">Saldo: ${fmtMoney(m.saldoAcumulado)}</div>
             <div class="subtle" style="margin-top:2px;">Ver detalle ›</div>
           </div>
         </div>
       </div>`).join('') : emptyState('📭','Sin movimientos en esta categoría');
+    aplicarZebra(el, items.length);
     el.querySelectorAll('.hd-mov-item').forEach(card=>{
       card.onclick = ()=>{
         const m = items[Number(card.dataset.i)];
@@ -3266,6 +3762,72 @@ function editarSaldoDivisa(nombre, onDone){
 }
 
 /* ---------------------------------------------------------------------- *
+ * 16b. CIFRADO DEL RESPALDO (.rmb) — AES-256-GCM con Web Crypto
+ *      Formato: "RMBS" (4 bytes) + versión (1) + sal (16) + IV (12) + datos.
+ *      La clave se deriva con PBKDF2 de una frase fija del código, así que
+ *      cualquier instalación de la app puede abrir cualquier respaldo sin
+ *      pedir contraseña. OJO: protege contra un curioso que abra el
+ *      archivo, NO contra alguien que lea el código de la app (es público).
+ *      NO CAMBIAR la frase: los respaldos anteriores dejarían de abrirse.
+ * ---------------------------------------------------------------------- */
+const CLAVE_RESPALDO = 'PeterServices-Remessas-2025-!Secure!';
+const RMB_FIRMA = [0x52,0x4D,0x42,0x53]; // "RMBS"
+const RMB_VERSION = 1;
+const RMB_ITERACIONES = 150000;
+
+async function derivarClaveRespaldo(sal){
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(CLAVE_RESPALDO), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:sal, iterations:RMB_ITERACIONES, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+function cifradoDisponible(){ return !!(window.crypto && crypto.subtle); }
+
+async function cifrarRespaldo(texto){
+  const sal = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const clave = await derivarClaveRespaldo(sal);
+  const datos = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv}, clave, new TextEncoder().encode(texto)));
+  const out = new Uint8Array(4 + 1 + 16 + 12 + datos.length);
+  out.set(RMB_FIRMA, 0); out[4] = RMB_VERSION; out.set(sal, 5); out.set(iv, 21); out.set(datos, 33);
+  return out;
+}
+
+function esRespaldoCifrado(bytes){
+  return bytes.length > 33 && RMB_FIRMA.every((b,i)=>bytes[i]===b);
+}
+
+async function descifrarRespaldo(bytes){
+  if(bytes[4] !== RMB_VERSION) throw new Error('Versión de respaldo no soportada');
+  const sal = bytes.slice(5, 21), iv = bytes.slice(21, 33), datos = bytes.slice(33);
+  const clave = await derivarClaveRespaldo(sal);
+  const plano = await crypto.subtle.decrypt({name:'AES-GCM', iv}, clave, datos);
+  return new TextDecoder().decode(plano);
+}
+
+// Lee un archivo de respaldo: cifrado (.rmb) o JSON antiguo sin cifrar.
+async function leerArchivoRespaldo(file){
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if(esRespaldoCifrado(bytes)){
+    if(!cifradoDisponible()) throw new Error('Este dispositivo no permite descifrar respaldos.');
+    return JSON.parse(await descifrarRespaldo(bytes));
+  }
+  // Respaldo antiguo: JSON plano (se ignora un posible BOM y espacios iniciales).
+  const texto = new TextDecoder().decode(bytes).replace(/^\uFEFF/, '');
+  if(!texto.trimStart().startsWith('{')) throw new Error('Formato desconocido');
+  return JSON.parse(texto);
+}
+
+function descargarArchivo(bytesOTexto, nombre, tipo){
+  const blob = new Blob([bytesOTexto], {type:tipo});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+
+/* ---------------------------------------------------------------------- *
  * 17. MENÚ 9 — RESPALDOS
  * ---------------------------------------------------------------------- */
 function diasDesde(ts){
@@ -3273,6 +3835,10 @@ function diasDesde(ts){
   return Math.floor((Date.now()-ts)/86400000);
 }
 
+function fechaInputAInicioDeDiaLocal(fechaStr){
+  const [y,m,d] = fechaStr.split('-').map(Number);
+  return new Date(y, m-1, d, 0, 0, 0, 0).getTime();
+}
 function fechaInputAFinDeDiaLocal(fechaStr){
   // Un <input type="date"> entrega "YYYY-MM-DD". JS interpreta esas cadenas
   // como medianoche UTC (no local), lo que en husos horarios negativos
@@ -3301,8 +3867,8 @@ function renderRespaldos(content){
     </div>
     <div class="card">
       <div style="font-weight:700;margin-bottom:6px;">Exportar datos</div>
-      <div class="subtle" style="margin-bottom:14px;">Genera un archivo JSON con todos los clientes, trabajadores, envíos, ventas, gastos y divisas (activos e inactivos).</div>
-      <button class="btn btn-primary btn-block" id="rp-export">⬇️ Exportar todos los datos (JSON)</button>
+      <div class="subtle" style="margin-bottom:14px;">Genera un archivo cifrado (.rmb) con todos los clientes, trabajadores, envíos, ventas, gastos, deudas y divisas (activos e inactivos). No se puede leer abriéndolo con otro programa; se restaura desde aquí, en este o en otro teléfono.</div>
+      <button class="btn btn-primary btn-block" id="rp-export">⬇️ Exportar respaldo cifrado (.rmb)</button>
     </div>
     <div class="card">
       <div style="font-weight:700;margin-bottom:6px;">Reporte ejecutivo</div>
@@ -3312,8 +3878,10 @@ function renderRespaldos(content){
     <div class="card">
       <div style="font-weight:700;margin-bottom:6px;">Importar desde archivo</div>
       <div class="subtle" style="margin-bottom:14px;">Fusiona un respaldo con los datos actuales sin borrar nada.</div>
-      <input type="file" id="rp-file" accept="application/json" style="display:none;">
-      <button class="btn btn-outline btn-block" id="rp-import">⬆️ Importar desde archivo JSON (fusionar)</button>
+      <!-- Sin "accept": en Android un tipo desconocido como .rmb podía quedar
+           bloqueado en el selector de archivos. El contenido se valida al leerlo. -->
+      <input type="file" id="rp-file" style="display:none;">
+      <button class="btn btn-outline btn-block" id="rp-import">⬆️ Importar respaldo (cifrado o JSON antiguo)</button>
     </div>
     <div class="card">
       <div style="font-weight:700;margin-bottom:6px;">Historial</div>
@@ -3334,22 +3902,30 @@ function renderRespaldos(content){
   });
   document.getElementById('rp-excel').onclick = generarReporteEjecutivo;
 
-  document.getElementById('rp-export').onclick = ()=>{
-    const data = JSON.parse(JSON.stringify(DB));
-    data.exportado_en = {timestamp: Date.now(), iso: new Date().toISOString()};
-    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const now = new Date();
-    const pad = n=>String(n).padStart(2,'0');
-    const name = `respaldo_${now.getFullYear()}_${pad(now.getMonth()+1)}_${pad(now.getDate())}_${pad(now.getHours())}_${pad(now.getMinutes())}_${pad(now.getSeconds())}.json`;
-    const a = document.createElement('a');
-    a.href = url; a.download = name;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 4000);
-    DB.meta.ultimo_respaldo = Date.now();
-    save();
-    toast('Respaldo exportado: ' + name);
-    renderRespaldos(content);
+  document.getElementById('rp-export').onclick = async ()=>{
+    if(!cifradoDisponible()){
+      alertDialog('No se pudo exportar', 'Este navegador no permite cifrar el respaldo. Abra la app desde la APK o desde su dirección https.');
+      return;
+    }
+    const btn = document.getElementById('rp-export');
+    btn.disabled = true;
+    try{
+      const data = JSON.parse(JSON.stringify(DB));
+      data.exportado_en = {timestamp: Date.now(), iso: new Date().toISOString()};
+      const cifrado = await cifrarRespaldo(JSON.stringify(data));
+      const now = new Date();
+      const pad = n=>String(n).padStart(2,'0');
+      const name = `respaldo_${now.getFullYear()}_${pad(now.getMonth()+1)}_${pad(now.getDate())}_${pad(now.getHours())}_${pad(now.getMinutes())}_${pad(now.getSeconds())}.rmb`;
+      descargarArchivo(cifrado, name, 'application/octet-stream');
+      DB.meta.ultimo_respaldo = Date.now();
+      save();
+      if(currentRouteView==='respaldos') renderRespaldos(content);
+      toast('Respaldo cifrado exportado: ' + name);
+    }catch(err){
+      console.error(err);
+      alertDialog('No se pudo exportar', 'Ocurrió un error al cifrar el respaldo.');
+      btn.disabled = false;
+    }
   };
 
   document.getElementById('rp-import').onclick = ()=>{
@@ -3359,27 +3935,89 @@ function renderRespaldos(content){
       {okLabel:'Continuar', cancelLabel:'Cancelar', danger:false}
     );
   };
-  document.getElementById('rp-file').addEventListener('change', (e)=>{
+  document.getElementById('rp-file').addEventListener('change', async (e)=>{
     const file = e.target.files[0];
     if(!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try{
-        const incoming = JSON.parse(reader.result);
-        const resumen = mergeImport(incoming);
-        save();
-        alertDialog('Importación completada',
-          `Insertados: ${resumen.insertados} · Actualizados: ${resumen.actualizados} · Omitidos (duplicados): ${resumen.omitidos}`);
-      }catch(err){
-        alertDialog('Error', 'El archivo no es un respaldo JSON válido.');
-      }
+    let incoming;
+    try{
+      incoming = await leerArchivoRespaldo(file);
+      if(!incoming || typeof incoming!=='object' || Array.isArray(incoming)) throw new Error('Contenido inválido');
+    }catch(err){
+      console.error(err);
       e.target.value = '';
-    };
-    reader.readAsText(file);
+      alertDialog('Error', 'No se pudo leer el respaldo. Verifique que el archivo sea un respaldo válido de la app.');
+      return;
+    }
+    e.target.value = '';
+    // Si la fusión falla a mitad de camino (archivo dañado), se vuelve al
+    // estado anterior para no dejar datos importados a medias.
+    const copiaPrevia = JSON.parse(JSON.stringify(DB));
+    let resumen;
+    try{
+      resumen = mergeImport(incoming);
+    }catch(err){
+      console.error(err);
+      DB = copiaPrevia;
+      alertDialog('Error', 'No se pudo leer el respaldo. Verifique que el archivo sea un respaldo válido de la app.');
+      return;
+    }
+    save();
+    alertDialog('Importación completada',
+      `Insertados: ${resumen.insertados} · Actualizados: ${resumen.actualizados} · Omitidos (duplicados): ${resumen.omitidos}`);
   });
 
   document.getElementById('rp-archivar').onclick = ()=>openArchivarHistorialModal(()=>renderRespaldos(content));
   document.getElementById('rp-ver-archivados').onclick = openVerArchivadosModal;
+}
+
+/* ---------------------------------------------------------------------- *
+ * 17b. AJUSTES (siempre el último menú)
+ *      Preferencias de ESTE dispositivo: no van en la base de datos ni en
+ *      el respaldo. La lógica de aplicar el tema vive en prefs.js.
+ * ---------------------------------------------------------------------- */
+function renderAjustes(content){
+  const prefs = leerPrefs();
+  content.innerHTML = `
+    <h1 class="section-title">Ajustes</h1>
+    <div class="card">
+      <div style="font-weight:800;margin-bottom:10px;">🎨 Apariencia</div>
+      <div class="set-row">
+        <div>
+          <div class="set-label">Modo oscuro</div>
+          <div class="subtle">Fondo oscuro, más cómodo de noche.</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="aj-oscuro" ${prefs.modo_oscuro?'checked':''}>
+          <span class="switch-track"></span>
+        </label>
+      </div>
+      <div class="divider" style="margin:12px 0;"></div>
+      <div class="set-label">Color principal</div>
+      <div class="swatches" id="aj-colores">
+        ${Object.entries(PALETAS).map(([clave, p])=>`
+          <button class="swatch ${prefs.color_principal===clave?'active':''}" data-color="${clave}" type="button" aria-label="${escapeHtml(p.nombre)}">
+            <span class="swatch-dot" style="background:${p[800]};">${prefs.color_principal===clave?'✓':''}</span>
+            ${escapeHtml(p.nombre)}
+          </button>`).join('')}
+      </div>
+    </div>
+    <div class="subtle" style="text-align:center;margin-top:10px;">Estas preferencias se guardan solo en este dispositivo y no se incluyen en el respaldo.</div>
+  `;
+  document.getElementById('aj-oscuro').addEventListener('change', (e)=>{
+    const p = leerPrefs();
+    p.modo_oscuro = e.target.checked;
+    guardarPrefs(p);
+    aplicarModoOscuro(p.modo_oscuro);
+  });
+  document.querySelectorAll('#aj-colores .swatch').forEach(btn=>{
+    btn.onclick = ()=>{
+      const p = leerPrefs();
+      p.color_principal = btn.dataset.color;
+      guardarPrefs(p);
+      aplicarColorPrincipal(p.color_principal);
+      renderAjustes(content);
+    };
+  });
 }
 
 /* ---------------------------------------------------------------------- *
@@ -3404,7 +4042,7 @@ function openArchivarHistorialModal(onDone){
     <div class="modal-msg">No se elimina ningún dato: los registros archivados dejan de mostrarse en los historiales, pero el balance y las deudas siguen funcionando igual.</div>
     <label class="field-label">¿Qué archivar?</label>
     ${ARCHIVABLES.map(a=>`
-      <label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14.5px;font-weight:600;">
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-main);font-size:14.5px;font-weight:600;">
         <input type="checkbox" class="ah-check" data-key="${a.key}" checked style="width:18px;height:18px;">
         ${a.label}
       </label>
@@ -3484,7 +4122,7 @@ function openVerArchivadosModal(){
       <div class="modal-msg">Solo lectura — ${items.length} registro(s) archivado(s). Puede desarchivar uno si fue un error.</div>
       <div style="max-height:55vh;overflow-y:auto;">
         ${items.length ? items.map(m=>`
-          <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:10px 12px;margin-bottom:8px;">
+          <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:10px 12px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
               <div style="min-width:0;">
                 <div style="font-weight:700;font-size:14px;">${escapeHtml(m.tipo)}</div>
@@ -3729,11 +4367,13 @@ function renderDeudas(content){
     </div>
     <div id="deudas-totales"></div>
     <div id="deudas-list"></div>
+    <div id="deudas-pag"></div>
     ${deudasTab!=='historial' ? `<button class="fab" id="fab-add-deuda" aria-label="Agregar">+</button>` : ''}
   `;
 
+  // A igual nombre (o fecha), por id descendente: orden determinista para la paginación.
   function ordenarPorPersona(lista){
-    return lista.slice().sort((a,b)=> String(a.persona||'').localeCompare(String(b.persona||''), 'es', {sensitivity:'base'}));
+    return lista.slice().sort((a,b)=> String(a.persona||'').localeCompare(String(b.persona||''), 'es', {sensitivity:'base'}) || (b.id||0)-(a.id||0));
   }
 
   function refresh(){
@@ -3744,13 +4384,21 @@ function renderDeudas(content){
     document.getElementById('deudas-count-cobrar').textContent = cobrarCount;
     let items;
     const totalesEl = document.getElementById('deudas-totales');
+    const pagEl = document.getElementById('deudas-pag');
     if(deudasTab==='historial'){
+      // Solo el Historial se pagina; los contadores de las pestañas siguen
+      // mostrando el total real de pendientes.
       totalesEl.innerHTML = '';
       items = DB.deudas.filter(d=>d.estado==='pagado'||d.estado==='cobrado');
-      items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.fecha_cierre||0)-(a.fecha_cierre||0));
-      el.innerHTML = items.length ? items.map(deudaHistorialRowHtml).join('') :
+      items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.fecha_cierre||0)-(a.fecha_cierre||0) || (b.id||0)-(a.id||0));
+      const estado = paginacion.deudas_historial;
+      const pag = paginarArray(items, estado);
+      el.innerHTML = items.length ? pag.items.map(deudaHistorialRowHtml).join('') :
         emptyState('🗂️','Aún no hay registros pagados o cobrados');
+      aplicarZebra(el, items.length);
+      renderControlPaginacion(pagEl, estado, pag, refresh, el);
     } else {
+      pagEl.innerHTML = '';
       items = DB.deudas.filter(d=>d.tipo===deudasTab && d.estado==='pendiente');
       const porDivisa = {};
       items.forEach(d=>{ porDivisa[d.divisa] = (porDivisa[d.divisa]||0) + Number(d.monto||0); });
@@ -3758,13 +4406,14 @@ function renderDeudas(content){
       totalesEl.innerHTML = divisasConTotal.length ? `
         <div class="card" style="padding:12px 14px;margin-bottom:10px;">
           <div class="subtle" style="margin-bottom:4px;">${deudasTab==='pagar_a'?'Total por pagar':'Total por cobrar'}</div>
-          <div style="font-weight:800;font-size:15px;color:var(--teal-800);">
+          <div style="font-weight:800;font-size:15px;color:var(--accent-text);">
             ${divisasConTotal.map(dv=>`${fmtMoney(porDivisa[dv])} ${escapeHtml(dv)}`).join(' · ')}
           </div>
         </div>` : '';
-      items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.creado_en||b.fecha)-(a.creado_en||a.fecha));
+      items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.creado_en||b.fecha)-(a.creado_en||a.fecha) || (b.id||0)-(a.id||0));
       el.innerHTML = items.length ? items.map(deudaRowHtml).join('') :
         emptyState(deudasTab==='pagar_a'?'💸':'🤝', deudasTab==='pagar_a' ? 'No hay deudas pendientes por pagar' : 'No hay registros pendientes por cobrar');
+      aplicarZebra(el, items.length);
     }
     el.querySelectorAll('.list-item').forEach(li=>{
       li.onclick = ()=> openDeudaDetalle(Number(li.dataset.id), refresh);
@@ -3778,6 +4427,7 @@ function renderDeudas(content){
   });
   document.querySelectorAll('#deudas-orden .chip').forEach(c=>{
     c.onclick = ()=>{
+      if(deudasOrden !== c.dataset.v) paginacion.deudas_historial.actual = 1; // cambiar el orden vuelve a la página 1
       deudasOrden = c.dataset.v;
       document.querySelectorAll('#deudas-orden .chip').forEach(x=>x.classList.remove('active'));
       c.classList.add('active');
@@ -3787,6 +4437,7 @@ function renderDeudas(content){
   const fab = document.getElementById('fab-add-deuda');
   if(fab) fab.onclick = ()=> openDeudaForm(deudasTab, refresh);
   refresh();
+  actualizarFabEnvio(); // la pestaña Historial no tiene botón "+"
 }
 
 function estadoBadgeHtml(estado){
@@ -3903,7 +4554,7 @@ function openDeudaForm(tipo, onSaved){
     const ahora = Date.now();
     const deuda = {
       id: nextId('deudas'), tipo, persona, monto, divisa,
-      fecha: new Date(fechaVal).getTime(),
+      fecha: fechaInputAInicioDeDiaLocal(fechaVal),
       creado_en: ahora,
       afecta_balance: esMeDeben ? (afectaBalance===MEDEBEN_PRESTAMO ? 1 : 0) : afectaBalance,
       estado: 'pendiente', fecha_cierre: null, nota,
@@ -3926,7 +4577,7 @@ function openDeudaDetalle(id, onChange){
   const esMeDeben = d.tipo==='me_deben';
   openModal(`
     <div class="modal-title">${esMeDeben?'Me deben':'Pagar a'} — ${escapeHtml(d.persona)}</div>
-    <div class="card" style="box-shadow:none;border:1px solid var(--line);padding:12px;margin-top:8px;">
+    <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:8px;">
       <div class="sumrow"><span class="k">Persona / Entidad</span><span class="v">${escapeHtml(d.persona)}</span></div>
       <div class="sumrow"><span class="k">Monto</span><span class="v">${fmtMoney(d.monto)} ${escapeHtml(d.divisa)}</span></div>
       <div class="sumrow"><span class="k">Fecha del registro</span><span class="v">${fmtDateShort(d.fecha)}</span></div>
@@ -4003,7 +4654,7 @@ function openDeudaDetalle(id, onChange){
   }
   document.getElementById('dd-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar este registro de ${escapeHtml(d.persona)}?`, ()=>{
+    confirmDialog(`¿Eliminar este registro de ${escapeHtml(d.persona)}?`, ()=> eliminarConDeshacer('Deuda eliminada', ()=>{
       if(d.tipo==='me_deben'){
         if(meDebenRestaAlCrear(d)){
           if(d.estado==='pendiente') adjustBalance(d.divisa, d.monto);
@@ -4023,8 +4674,8 @@ function openDeudaDetalle(id, onChange){
         }
       }
       DB.deudas = DB.deudas.filter(x=>x.id!==d.id);
-      save(); toast('Registro eliminado'); onChange && onChange();
-    });
+      save(); onChange && onChange();
+    }));
   };
 }
 

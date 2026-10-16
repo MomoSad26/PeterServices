@@ -44,9 +44,12 @@ function eliminarDeudaAutomaticaSiPendiente(origen, origen_id){
 let deudasTab = 'pagar_a';
 let deudasOrden = 'fecha'; // 'fecha' | 'az' — persiste al cambiar de pestaña dentro de Deudas
 
-function renderDeudas(content){
+function renderDeudas(content, presetParam){
+  if(presetParam==='pagar_a' || presetParam==='me_deben') deudasTab=presetParam;
+  const modoBusqueda=busquedaFiltrandoLista('deudas');
   content.innerHTML = `
-    <h1 class="section-title">Deudas</h1>
+    <h1 class="section-title">${modoBusqueda?'Resultados de búsqueda — Deudas':'Deudas'}</h1>
+    ${modoBusqueda ? `<div class="subtle" style="margin-bottom:12px;">Resultados para: <strong>${escapeHtml(busquedaFiltroLista.consulta)}</strong></div>` : `
     <div class="tabs" id="deudas-tabs">
       <div class="tab ${deudasTab==='pagar_a'?'active':''}" data-v="pagar_a">Pagar a: <span class="tab-count" id="deudas-count-pagar">0</span></div>
       <div class="tab ${deudasTab==='me_deben'?'active':''}" data-v="me_deben">Me deben: <span class="tab-count" id="deudas-count-cobrar">0</span></div>
@@ -55,11 +58,11 @@ function renderDeudas(content){
     <div class="chip-row" id="deudas-orden">
       <div class="chip ${deudasOrden==='fecha'?'active':''}" data-v="fecha">📅 Por fecha</div>
       <div class="chip ${deudasOrden==='az'?'active':''}" data-v="az">🔤 A-Z</div>
-    </div>
+    </div>`}
     <div id="deudas-totales"></div>
     <div id="deudas-list"></div>
     <div id="deudas-pag"></div>
-    ${deudasTab!=='historial' ? `<button class="fab" id="fab-add-deuda" aria-label="Agregar">+</button>` : ''}
+    ${!modoBusqueda && deudasTab!=='historial' ? `<button class="fab" id="fab-add-deuda" aria-label="Agregar">+</button>` : ''}
   `;
 
   // A igual nombre (o fecha), por id descendente: orden determinista para la paginación.
@@ -69,6 +72,14 @@ function renderDeudas(content){
 
   function refresh(){
     const el = document.getElementById('deudas-list');
+    if(modoBusqueda){
+      document.getElementById('deudas-totales').innerHTML='';
+      document.getElementById('deudas-pag').innerHTML='';
+      const items=DB.deudas.filter(d=>busquedaRegistroCoincide('deudas',d,busquedaFiltroLista.consulta))
+        .sort((a,b)=>(Number(b.creado_en||b.fecha||0)-Number(a.creado_en||a.fecha||0)));
+      el.innerHTML=items.length ? items.map(deudaRowHtml).join('') : emptyState('🤝','No se encontraron deudas con esos criterios.');
+      aplicarZebra(el,items.length);
+    }else{
     const pagarCount = DB.deudas.filter(d=>d.tipo==='pagar_a' && d.estado==='pendiente').length;
     const cobrarCount = DB.deudas.filter(d=>d.tipo==='me_deben' && d.estado==='pendiente').length;
     document.getElementById('deudas-count-pagar').textContent = pagarCount;
@@ -105,6 +116,7 @@ function renderDeudas(content){
       el.innerHTML = items.length ? items.map(deudaRowHtml).join('') :
         emptyState(deudasTab==='pagar_a'?'💸':'🤝', deudasTab==='pagar_a' ? 'No hay deudas pendientes por pagar' : 'No hay registros pendientes por cobrar');
       aplicarZebra(el, items.length);
+    }
     }
     el.querySelectorAll('.list-item').forEach(li=>{
       li.onclick = ()=> openDeudaDetalle(Number(li.dataset.id), refresh);

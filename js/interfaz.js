@@ -6,23 +6,97 @@
    cualquier modal (Balance, Historial por divisa, detalle de venta/compra/
    gasto/In-Out/deuda, etc.) se restaura exactamente donde estaba el usuario. */
 const modalScrollStack = [];
+const OVERLAY_HISTORY_KEY = '__peterOverlayStack';
+let overlayHistoryStack = [];
+let overlayHistoryCounter = 0;
+let overlayHistoryBackPending = false;
+let pendingOverlayOpen = null;
+let pendingOverlayNavigation = null;
+let activeModalOverlayId = null;
+let activeSideMenuOverlayId = null;
 
-function closeModal(){
+function obtenerPilaOverlaysEstado(state){
+  const pila = state && state[OVERLAY_HISTORY_KEY];
+  return Array.isArray(pila)
+    ? pila.filter(x=>x && (x.tipo==='modal' || x.tipo==='sidebar') && x.id!==undefined)
+        .map(x=>({tipo:x.tipo, id:x.id}))
+    : [];
+}
+function registrarOverlayEnHistorial(tipo, {reemplazarModal=false} = {}){
+  const entrada = {tipo, id:String(Date.now())+'-'+String(++overlayHistoryCounter)};
+  if(overlayHistoryBackPending){
+    pendingOverlayOpen = entrada;
+    return entrada;
+  }
+  const nueva = overlayHistoryStack.slice();
+  const ultimo = nueva[nueva.length-1];
+  if(reemplazarModal && ultimo && ultimo.tipo==='modal' && activeModalOverlayId===ultimo.id){
+    nueva[nueva.length-1] = entrada;
+    try{
+      history.replaceState({...((history.state && typeof history.state==='object') ? history.state : {}), [OVERLAY_HISTORY_KEY]:nueva}, '', location.href);
+      overlayHistoryStack = nueva;
+    }catch(err){ /* El modal sigue funcionando aunque el WebView no permita guardar estado. */ }
+  }else{
+    nueva.push(entrada);
+    try{
+      history.pushState({...((history.state && typeof history.state==='object') ? history.state : {}), [OVERLAY_HISTORY_KEY]:nueva}, '', location.href);
+      overlayHistoryStack = nueva;
+    }catch(err){ /* El modal sigue funcionando aunque el WebView no permita guardar estado. */ }
+  }
+  return entrada;
+}
+function iniciarRegresoOverlay(tipo, id, alRegresar){
+  if(id===null || id===undefined) return false;
+  const pilaEstado = obtenerPilaOverlaysEstado(history.state);
+  const ultimo = pilaEstado[pilaEstado.length-1];
+  if(!ultimo || ultimo.tipo!==tipo || ultimo.id!==id) return false;
+  overlayHistoryBackPending = true;
+  pendingOverlayOpen = null;
+  pendingOverlayNavigation = typeof alRegresar==='function' ? alRegresar : null;
+  history.back();
+  return true;
+}
+
+function closeModalSinHistoryBack(){
   const root = document.getElementById('modal-root');
+  if(!root || !root.innerHTML.trim()){
+    activeModalOverlayId = null;
+    return false;
+  }
   root.innerHTML = '';
+  activeModalOverlayId = null;
   if(modalScrollStack.length){
     const y = modalScrollStack.pop();
     requestAnimationFrame(()=>{ window.scrollTo(0, y); });
   }
+  return true;
+}
+function closeModal(){
+  const root = document.getElementById('modal-root');
+  if(!root || !root.innerHTML.trim()) return;
+  const id = activeModalOverlayId;
+  closeModalSinHistoryBack();
+  if(!iniciarRegresoOverlay('modal', id)){
+    overlayHistoryStack = overlayHistoryStack.filter(x=>x.id!==id);
+  }
 }
 
 function openModal(html, {center=false} = {}){
-  modalScrollStack.push(getScrollY());
   const root = document.getElementById('modal-root');
+  const estabaAbierto = !!(root && root.innerHTML.trim());
+  const modalAnteriorId = activeModalOverlayId;
+  if(!estabaAbierto) modalScrollStack.push(getScrollY());
   root.innerHTML = `
     <div class="modal-backdrop ${center?'center':''}" id="modal-backdrop">
       <div class="modal-sheet" id="modal-sheet">${html}</div>
     </div>`;
+  const entrada = registrarOverlayEnHistorial('modal', {
+    reemplazarModal: estabaAbierto &&
+      overlayHistoryStack.length>0 &&
+      overlayHistoryStack[overlayHistoryStack.length-1].tipo==='modal' &&
+      overlayHistoryStack[overlayHistoryStack.length-1].id===modalAnteriorId
+  });
+  activeModalOverlayId = entrada.id;
   document.getElementById('modal-backdrop').addEventListener('click', (e)=>{
     if(e.target.id === 'modal-backdrop') closeModal();
   });

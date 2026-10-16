@@ -28,7 +28,12 @@ function applyHistorialFilters(list){
     if(f.tipo==='Especiales' && e.tipo!=='precio_especial') return false;
     if(f.forma!=='Todas' && e.forma_ganancia!==f.forma) return false;
     if(f.divisa!=='Todas' && e.divisa_entrega!==f.divisa && e.divisa_ganancia!==f.divisa) return false;
-    if(f.fecha==='Hoy' && e.fecha_hora < todayRangeStart()) return false;
+    if(f.fecha==='Hoy'){
+      const inicioHoy=todayRangeStart();
+      const manana=new Date(inicioHoy);
+      manana.setDate(manana.getDate()+1);
+      if(e.fecha_hora < inicioHoy || e.fecha_hora >= manana.getTime()) return false;
+    }
     if(f.fecha==='Semanal' && e.fecha_hora < startOfWeek()) return false;
     if(f.fecha==='Mensual' && e.fecha_hora < startOfMonth()) return false;
     if(f.fecha==='Personalizado'){

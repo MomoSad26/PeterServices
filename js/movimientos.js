@@ -256,6 +256,7 @@ function openVentaEditModal(id, onSaved){
     }
     const nuevo = {cantidad_vendida, divisa_vendida, cantidad_recibida, divisa_recibida, fecha_hora:new Date(fechaVal).getTime(), nota};
     confirmDialog('¿Guardar los cambios de esta venta? Se ajustará el balance general y la deuda asociada, si existe.', ()=>{
+      closeModal();
       guardarEdicionVenta(v, nuevo);
       toast('Venta actualizada');
       onSaved && onSaved();
@@ -485,6 +486,7 @@ function openCompraEditModal(id, onSaved){
     }
     const nuevo = {cantidad_comprada, divisa_comprada, cantidad_pagada, divisa_pagada, fecha_hora:new Date(fechaVal).getTime(), nota};
     confirmDialog('¿Guardar los cambios de esta compra? Se ajustará el balance general y la deuda asociada, si existe.', ()=>{
+      closeModal();
       guardarEdicionCompra(c, nuevo);
       toast('Compra actualizada');
       onSaved && onSaved();
@@ -676,6 +678,7 @@ function openGastoEditModal(id, onSaved){
       toast('Todos los campos obligatorios deben estar llenos.'); return;
     }
     confirmDialog('¿Guardar los cambios de este gasto? Se ajustará el balance general.', ()=>{
+      closeModal();
       applyGastoBalance(g, -1);
       g.concepto = concepto; g.cantidad = cantidad; g.divisa = divisa;
       g.fecha_hora = new Date(fechaVal).getTime(); g.nota = nota;
@@ -851,6 +854,7 @@ function openInOutEditModal(id, onSaved){
       toast('Todos los campos obligatorios deben estar llenos.'); return;
     }
     confirmDialog('¿Guardar los cambios de este movimiento? Se ajustará el balance general.', ()=>{
+      closeModal();
       adjustBalance(io.divisa, io.tipo==='entrada' ? -io.cantidad : io.cantidad);
       io.tipo = tipo; io.cantidad = cantidad; io.divisa = divisa;
       io.fecha_hora = new Date(fechaVal).getTime(); io.nota = nota;

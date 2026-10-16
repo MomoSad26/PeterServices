@@ -1,4 +1,4 @@
-const CACHE = 'remesas-v19';;
+const CACHE = 'remesas-v20';
 const FILES = [
   './',
   './index.html',
@@ -21,6 +21,8 @@ const FILES = [
   './js/archivo.js',
   './js/deudas.js',
   './js/xlsx.js',
+  './js/panel.js',
+  './js/busqueda.js',
   './prefs.js',
   './manifest.json',
   './icons/icon-192.png',

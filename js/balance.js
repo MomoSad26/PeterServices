@@ -13,6 +13,11 @@ function periodStart(period){
   return null;
 }
 function periodEnd(period){
+  if(period==='Hoy'){
+    const fin = new Date();
+    fin.setHours(23,59,59,999);
+    return fin.getTime();
+  }
   if(period==='Personalizado') return balanceCustomHasta;
   return null;
 }

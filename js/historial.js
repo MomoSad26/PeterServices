@@ -17,7 +17,8 @@ function entityNameForEnvio(e){
 function applyHistorialFilters(list){
   const f = historialFilters;
   return list.filter(e=>{
-    if(e.archivado) return false;
+    if(e.archivado && !busquedaFiltrandoLista('envios')) return false;
+    if(busquedaFiltrandoLista('envios') && !busquedaFiltrarRegistroLista('envios',e)) return false;
     if(f.q){
       const name = entityNameForEnvio(e);
       if(!coincideBusqueda(name, f.q)) return false;
@@ -27,7 +28,12 @@ function applyHistorialFilters(list){
     if(f.tipo==='Especiales' && e.tipo!=='precio_especial') return false;
     if(f.forma!=='Todas' && e.forma_ganancia!==f.forma) return false;
     if(f.divisa!=='Todas' && e.divisa_entrega!==f.divisa && e.divisa_ganancia!==f.divisa) return false;
-    if(f.fecha==='Hoy' && e.fecha_hora < todayRangeStart()) return false;
+    if(f.fecha==='Hoy'){
+      const inicioHoy=todayRangeStart();
+      const manana=new Date(inicioHoy);
+      manana.setDate(manana.getDate()+1);
+      if(e.fecha_hora < inicioHoy || e.fecha_hora >= manana.getTime()) return false;
+    }
     if(f.fecha==='Semanal' && e.fecha_hora < startOfWeek()) return false;
     if(f.fecha==='Mensual' && e.fecha_hora < startOfMonth()) return false;
     if(f.fecha==='Personalizado'){
@@ -51,6 +57,7 @@ function renderHistorial(content, presetParam){
   }
   content.innerHTML = `
     <h1 class="section-title">Historial de envíos</h1>
+    ${busquedaFiltrandoLista('envios') ? `<div class="subtle" style="margin:-4px 0 12px;">Resultados para: <strong>${escapeHtml(busquedaFiltroLista.consulta)}</strong></div>` : ''}
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input type="text" id="h-search" placeholder="Buscar por nombre..." value="${escapeHtml(historialFilters.q)}">

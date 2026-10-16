@@ -3,13 +3,11 @@
  * ---------------------------------------------------------------------- */
 function renderClientesList(content, searchTerm){
   searchTerm = searchTerm || '';
-  const items = DB.clientes
-    .filter(c=>c.activo)
-    .filter(c=>coincideBusqueda(c.nombre, searchTerm))
-    .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const items = filtrarClientesParaLista(searchTerm);
 
   content.innerHTML = `
     <h1 class="section-title">Clientes</h1>
+    ${busquedaFiltrandoLista('clientes') ? `<div class="subtle" style="margin:-4px 0 12px;">Resultados para: <strong>${escapeHtml(busquedaFiltroLista.consulta)}</strong></div>` : ''}
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input type="text" id="cli-search" placeholder="Buscar cliente..." value="${escapeHtml(searchTerm)}">
@@ -57,11 +55,17 @@ function renderClientesList(content, searchTerm){
     });
   }
 }
+function filtrarClientesParaLista(searchTerm){
+  searchTerm = searchTerm || '';
+  const modoBusqueda = busquedaFiltrandoLista('clientes');
+  return DB.clientes.filter(c=>modoBusqueda || c.activo)
+    .filter(c=>coincideBusqueda(c.nombre, searchTerm))
+    .filter(c=>busquedaFiltrarRegistroLista('clientes',c))
+    .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+}
 function renderClienteListInner(searchTerm){
   searchTerm = searchTerm || '';
-  const items = DB.clientes.filter(c=>c.activo)
-    .filter(c=>coincideBusqueda(c.nombre, searchTerm))
-    .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const items = filtrarClientesParaLista(searchTerm);
   return items.length ? items.map(clienteRowHtml).join('') : emptyState('👤','Aún no hay clientes registrados');
 }
 function clienteRowHtml(c){

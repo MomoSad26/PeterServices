@@ -4,6 +4,7 @@
 function renderTrabajadoresList(content){
   content.innerHTML = `
     <h1 class="section-title">Trabajadores</h1>
+    ${busquedaFiltrandoLista('trabajadores') ? `<div class="subtle" style="margin:-4px 0 12px;">Resultados para: <strong>${escapeHtml(busquedaFiltroLista.consulta)}</strong></div>` : ''}
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input type="text" id="tr-search" placeholder="Buscar trabajador..." >
@@ -48,8 +49,10 @@ function renderTrabajadoresList(content){
 }
 function renderTrabajadorListInner(searchTerm){
   searchTerm = searchTerm||'';
-  const items = DB.trabajadores.filter(t=>t.activo)
+  const modoBusqueda = busquedaFiltrandoLista('trabajadores');
+  const items = DB.trabajadores.filter(t=>modoBusqueda || t.activo)
     .filter(t=>coincideBusqueda(t.nombre, searchTerm))
+    .filter(t=>busquedaFiltrarRegistroLista('trabajadores',t))
     .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
   return items.length ? items.map(t=>`
     <div class="list-item" data-id="${t.id}">

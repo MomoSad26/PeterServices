@@ -6,7 +6,8 @@
 function renderListadoPaginado(content, cfg){
   const estado = paginacion[cfg.clave];
   content.innerHTML = `
-    <h1 class="section-title">${cfg.titulo}</h1>
+    <h1 class="section-title">${busquedaFiltrandoLista(cfg.clave)?'Resultados de búsqueda — '+cfg.titulo:cfg.titulo}</h1>
+    ${busquedaFiltrandoLista(cfg.clave) ? `<div class="subtle" style="margin:-4px 0 12px;">Resultados para: <strong>${escapeHtml(busquedaFiltroLista.consulta)}</strong></div>` : ''}
     ${cfg.intro || ''}
     <button class="btn btn-gold btn-block" id="${cfg.prefijo}-nuevo">${cfg.textoNuevo}</button>
     <div style="height:14px;"></div>
@@ -16,7 +17,10 @@ function renderListadoPaginado(content, cfg){
   const listEl = document.getElementById(`${cfg.prefijo}-list`);
   function refresh(){
     if(!document.body.contains(listEl)) return; // el usuario ya cambió de pantalla
-    const items = DB[cfg.clave].filter(r=>!r.archivado).sort(ordenFechaDesc);
+    const items = DB[cfg.clave]
+      .filter(r=>busquedaFiltrandoLista(cfg.clave) || !r.archivado)
+      .filter(r=>busquedaFiltrarRegistroLista(cfg.clave,r))
+      .sort(ordenFechaDesc);
     const pag = paginarArray(items, estado);
     listEl.innerHTML = items.length ? pag.items.map(cfg.rowHtml).join('') : emptyState(cfg.vacioIcono, cfg.vacioTexto);
     aplicarZebra(listEl, items.length);

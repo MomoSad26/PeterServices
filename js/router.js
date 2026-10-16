@@ -2,7 +2,7 @@
  * 8. ROUTER
  * ---------------------------------------------------------------------- */
 const TITLES = {
-  clientes:'Clientes', envio:'Nuevo envío', trabajadores:'Trabajadores',
+  panel:'Panel', busqueda:'Buscar', clientes:'Clientes', envio:'Nuevo envío', trabajadores:'Trabajadores',
   'precio-especial':'Precio especial', historial:'Historial de envíos',
   compras:'Compras', ventas:'Ventas', gastos:'Gastos', 'in-out':'In/Out',
   balance:'Balance', respaldos:'Respaldos', deudas:'Deudas', ajustes:'Ajustes'
@@ -38,6 +38,7 @@ function restoreScrollFor(view){
 function route(){
   if(!DB) return; // aún cargando la base de datos (ver bootstrap())
   const {view, param} = parseHash();
+  if(typeof sincronizarFiltroBusquedaRuta==='function') sincronizarFiltroBusquedaRuta(view, param);
   saveCurrentScroll();
   setActiveMenu(view);
   cerrarOverlaysAlCambiarRuta();
@@ -45,7 +46,9 @@ function route(){
   currentRouteView = view;
   const content = document.getElementById('app-content');
   switch(view){
-    case 'clientes': renderClientesList(content, param); break;
+    case 'panel': renderPanel(content); break;
+    case 'busqueda': renderBusqueda(content); break;
+    case 'clientes': renderClientesList(content, /^busqueda\//.test(param) ? '' : param); break;
     case 'cliente-detalle': renderClienteDetalle(content, Number(param)); break;
     case 'envio': {
       // #/envio/cliente/123 → formulario con ese cliente ya seleccionado.
@@ -65,7 +68,7 @@ function route(){
     case 'in-out': renderInOut(content); break;
     case 'balance': renderBalance(content); break;
     case 'respaldos': renderRespaldos(content); break;
-    case 'deudas': renderDeudas(content); break;
+    case 'deudas': renderDeudas(content, param); break;
     case 'ajustes': renderAjustes(content); break;
     default: renderClientesList(content);
   }
@@ -218,6 +221,10 @@ async function bootstrap(){
   normalizarNombresDeudasAutomaticas();
 
   document.getElementById('btn-menu').addEventListener('click', openSideMenu);
+  document.getElementById('btn-search').addEventListener('click', ()=>{
+    if(location.hash==='#/busqueda'){ route(); return; }
+    location.hash = '#/busqueda';
+  });
   document.getElementById('fab-envio').addEventListener('click', ()=>{ location.hash = '#/envio'; });
   document.getElementById('side-overlay').addEventListener('click', ()=>closeSideMenu());
   document.querySelectorAll('.menu-list a').forEach(a=>{

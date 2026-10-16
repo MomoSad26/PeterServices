@@ -10,6 +10,7 @@ const OVERLAY_HISTORY_KEY = '__peterOverlayStack';
 let overlayHistoryStack = [];
 let overlayHistoryCounter = 0;
 let overlayHistoryBackPending = false;
+let pendingOverlayAdditionalBacks = 0;
 let pendingOverlayOpen = null;
 let pendingOverlayNavigation = null;
 let activeModalOverlayId = null;
@@ -47,6 +48,19 @@ function registrarOverlayEnHistorial(tipo, {reemplazarModal=false} = {}){
 }
 function iniciarRegresoOverlay(tipo, id, alRegresar){
   if(id===null || id===undefined) return false;
+  // Si se cierran varias capas en una misma acción (p. ej. crear un cliente
+  // desde el selector), encadenar los pasos Atrás en vez de competir entre sí.
+  if(overlayHistoryBackPending){
+    if(pendingOverlayOpen && pendingOverlayOpen.id===id){
+      pendingOverlayOpen = null;
+      return true;
+    }
+    if(overlayHistoryStack.some(x=>x.id===id)){
+      pendingOverlayAdditionalBacks++;
+      return true;
+    }
+    return false;
+  }
   const pilaEstado = obtenerPilaOverlaysEstado(history.state);
   const ultimo = pilaEstado[pilaEstado.length-1];
   if(!ultimo || ultimo.tipo!==tipo || ultimo.id!==id) return false;
@@ -59,12 +73,28 @@ function iniciarRegresoOverlay(tipo, id, alRegresar){
 
 function closeModalSinHistoryBack(){
   const root = document.getElementById('modal-root');
-  if(!root || !root.innerHTML.trim()){
+  if(!root) return false;
+  const capas = Array.from(root.children).filter(el=>el.classList.contains('modal-backdrop'));
+  const backdrop = capas.slice().reverse().find(el=>el.style.display!=='none');
+  if(!backdrop){
     activeModalOverlayId = null;
     return false;
   }
-  root.innerHTML = '';
-  activeModalOverlayId = null;
+
+  backdrop.remove();
+  const anteriores = Array.from(root.children)
+    .filter(el=>el.classList.contains('modal-backdrop') && el.style.display==='none');
+  const anterior = anteriores[anteriores.length-1];
+  if(anterior){
+    anterior.style.display = '';
+    anterior.id = 'modal-backdrop';
+    const sheet = anterior.querySelector('.modal-sheet');
+    if(sheet) sheet.id = 'modal-sheet';
+    activeModalOverlayId = anterior.dataset.peterOverlayId || null;
+  }else{
+    activeModalOverlayId = null;
+  }
+
   if(modalScrollStack.length){
     const y = modalScrollStack.pop();
     requestAnimationFrame(()=>{ window.scrollTo(0, y); });
@@ -83,22 +113,30 @@ function closeModal(){
 
 function openModal(html, {center=false} = {}){
   const root = document.getElementById('modal-root');
-  const estabaAbierto = !!(root && root.innerHTML.trim());
-  const modalAnteriorId = activeModalOverlayId;
-  if(!estabaAbierto) modalScrollStack.push(getScrollY());
-  root.innerHTML = `
+  const anterior = root.querySelectorAll('.modal-backdrop');
+  const modalActual = Array.from(anterior).reverse().find(el=>el.style.display!=='none');
+  if(modalActual){
+    modalActual.style.display = 'none';
+    const oldId = modalActual.dataset.peterOverlayId || String(overlayHistoryCounter);
+    modalActual.id = 'modal-backdrop-hidden-'+oldId;
+    const oldSheet = modalActual.querySelector('.modal-sheet');
+    if(oldSheet) oldSheet.id = 'modal-sheet-hidden-'+oldId;
+  }
+  modalScrollStack.push(getScrollY());
+
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = `
     <div class="modal-backdrop ${center?'center':''}" id="modal-backdrop">
       <div class="modal-sheet" id="modal-sheet">${html}</div>
     </div>`;
-  const entrada = registrarOverlayEnHistorial('modal', {
-    reemplazarModal: estabaAbierto &&
-      overlayHistoryStack.length>0 &&
-      overlayHistoryStack[overlayHistoryStack.length-1].tipo==='modal' &&
-      overlayHistoryStack[overlayHistoryStack.length-1].id===modalAnteriorId
-  });
+  const backdrop = wrapper.firstElementChild;
+  const entrada = registrarOverlayEnHistorial('modal');
+  backdrop.dataset.peterOverlayId = entrada.id;
+  root.appendChild(backdrop);
   activeModalOverlayId = entrada.id;
-  document.getElementById('modal-backdrop').addEventListener('click', (e)=>{
-    if(e.target.id === 'modal-backdrop') closeModal();
+
+  backdrop.addEventListener('click', (e)=>{
+    if(e.target === backdrop) closeModal();
   });
 }
 // Permite cerrar cualquier modal con la tecla Escape (un solo listener para

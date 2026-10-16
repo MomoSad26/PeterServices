@@ -163,7 +163,7 @@ function actualizarIndicadorGuardado(){
     if(!el){
       el = document.createElement('div');
       el.id = 'save-indicator';
-      el.style.cssText = 'position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:10px;z-index:150;background:rgba(15,61,62,.9);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none;';
+      el.style.cssText = 'position:fixed;top:calc(64px + env(safe-area-inset-top,0px));right:10px;z-index:150;background:rgba(15,61,62,.9);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;pointer-events:none;max-width:calc(100vw - 20px);';
       el.textContent = '💾 Guardando…';
       document.body.appendChild(el);
     }

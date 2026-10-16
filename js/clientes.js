@@ -7,6 +7,7 @@ function renderClientesList(content, searchTerm){
 
   content.innerHTML = `
     <h1 class="section-title">Clientes</h1>
+    ${busquedaFiltrandoLista('clientes') ? `<div class="subtle" style="margin:-4px 0 12px;">Resultados para: <strong>${escapeHtml(busquedaFiltroLista.consulta)}</strong></div>` : ''}
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input type="text" id="cli-search" placeholder="Buscar cliente..." value="${escapeHtml(searchTerm)}">

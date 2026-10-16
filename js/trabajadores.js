@@ -48,8 +48,10 @@ function renderTrabajadoresList(content){
 }
 function renderTrabajadorListInner(searchTerm){
   searchTerm = searchTerm||'';
-  const items = DB.trabajadores.filter(t=>t.activo)
+  const modoBusqueda = busquedaFiltrandoLista('trabajadores');
+  const items = DB.trabajadores.filter(t=>modoBusqueda || t.activo)
     .filter(t=>coincideBusqueda(t.nombre, searchTerm))
+    .filter(t=>busquedaFiltrarRegistroLista('trabajadores',t))
     .sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
   return items.length ? items.map(t=>`
     <div class="list-item" data-id="${t.id}">

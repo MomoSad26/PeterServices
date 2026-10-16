@@ -30,6 +30,9 @@ function sincronizarFiltroBusquedaRuta(view,param){
       const consulta=busquedaDecodificar(m[1]);
       busquedaFiltroLista={seccion,consulta};
       busquedaTextoActual=consulta;
+      const paginaPorSeccion={envios:'historial',ventas:'ventas',compras:'compras',gastos:'gastos'};
+      const pagina=paginacion[paginaPorSeccion[seccion]];
+      if(pagina) pagina.actual=1;
     }else{
       busquedaFiltroLista=null;
     }

@@ -57,6 +57,7 @@ function renderHistorial(content, presetParam){
   }
   content.innerHTML = `
     <h1 class="section-title">Historial de envíos</h1>
+    ${busquedaFiltrandoLista('envios') ? `<div class="subtle" style="margin:-4px 0 12px;">Resultados para: <strong>${escapeHtml(busquedaFiltroLista.consulta)}</strong></div>` : ''}
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input type="text" id="h-search" placeholder="Buscar por nombre..." value="${escapeHtml(historialFilters.q)}">

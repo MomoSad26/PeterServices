@@ -117,7 +117,10 @@ function closeSideMenu(alCerrar){
 }
 
 function cerrarOverlaysAlCambiarRuta(){
-  closeModalSinHistoryBack();
+  const root = document.getElementById('modal-root');
+  while(root && root.querySelector('.modal-backdrop')){
+    if(!closeModalSinHistoryBack()) break;
+  }
   closeSideMenuSinHistoryBack();
   modalScrollStack.length = 0;
   overlayHistoryStack = [];
@@ -131,8 +134,14 @@ function cerrarOverlaysAlCambiarRuta(){
 function manejarPopstateOverlays(event){
   const destino = obtenerPilaOverlaysEstado(event.state);
   if(overlayHistoryBackPending){
-    overlayHistoryBackPending = false;
     overlayHistoryStack = destino;
+    if(pendingOverlayAdditionalBacks>0){
+      pendingOverlayAdditionalBacks--;
+      overlayHistoryBackPending = true;
+      history.back();
+      return;
+    }
+    overlayHistoryBackPending = false;
     const pendiente = pendingOverlayOpen;
     pendingOverlayOpen = null;
     if(pendiente){

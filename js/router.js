@@ -180,9 +180,12 @@ function manejarPopstateOverlays(event){
 
   const root = document.getElementById('modal-root');
   const menu = document.getElementById('side-menu');
+  const capasModalPresentes = root
+    ? Array.from(root.querySelectorAll('.modal-backdrop')).map(el=>el.dataset.peterOverlayId)
+    : [];
   const pilaDestinoTieneSuperposicionesOcultas = destino.some(x=>
     x.tipo==='modal'
-      ? !(root && root.innerHTML.trim() && activeModalOverlayId===x.id)
+      ? !capasModalPresentes.includes(String(x.id))
       : !(menu && menu.classList.contains('open') && activeSideMenuOverlayId===x.id)
   );
   if(pilaDestinoTieneSuperposicionesOcultas){

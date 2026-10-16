@@ -17,7 +17,8 @@ function entityNameForEnvio(e){
 function applyHistorialFilters(list){
   const f = historialFilters;
   return list.filter(e=>{
-    if(e.archivado) return false;
+    if(e.archivado && !busquedaFiltrandoLista('envios')) return false;
+    if(busquedaFiltrandoLista('envios') && !busquedaFiltrarRegistroLista('envios',e)) return false;
     if(f.q){
       const name = entityNameForEnvio(e);
       if(!coincideBusqueda(name, f.q)) return false;

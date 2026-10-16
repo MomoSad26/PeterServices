@@ -346,23 +346,55 @@ function openEnvioEditModal(id, onSaved){
     };
   });
 
+  const cantidadEl = document.getElementById('ee-cantidad');
   const precioEl = document.getElementById('ee-precio');
+  const pagadaEl = document.getElementById('ee-pagada');
   const cotizadoEl = document.getElementById('ee-cotizado');
+  const gananciaEl = document.getElementById('ee-ganancia');
   const saveBtn = document.getElementById('ee-save');
+  let pagadaTouched = false, gananciaTouched = false;
+
   function validarCotizado(){
-    if(e.tipo==='precio_especial'){ cotizadoEl.classList.remove('err'); saveBtn.disabled=false; saveBtn.style.opacity=1; return; }
+    if(e.tipo==='precio_especial'){
+      cotizadoEl.classList.remove('err');
+      saveBtn.disabled = false;
+      saveBtn.style.opacity = 1;
+      return;
+    }
     const precio = parseFloat(precioEl.value)||0;
     const cotizadoRaw = cotizadoEl.value.trim();
     const cotizado = cotizadoRaw==='' ? null : parseFloat(cotizadoRaw);
     if(cotizado!==null && cotizado < precio){
       cotizadoEl.classList.add('err');
-      saveBtn.disabled = true; saveBtn.style.opacity = .5;
+      saveBtn.disabled = true;
+      saveBtn.style.opacity = .5;
     } else {
       cotizadoEl.classList.remove('err');
-      saveBtn.disabled = false; saveBtn.style.opacity = 1;
+      saveBtn.disabled = false;
+      saveBtn.style.opacity = 1;
     }
   }
-  [precioEl, cotizadoEl].forEach(el=>el.addEventListener('input', validarCotizado));
+  function recalc(){
+    // Los envíos de precio especial conservan todos sus campos manuales.
+    if(e.tipo!=='precio_especial'){
+      const cant = parseFloat(cantidadEl.value)||0;
+      const precio = parseFloat(precioEl.value)||0;
+      const cotizadoRaw = cotizadoEl.value.trim();
+      const cotizado = cotizadoRaw==='' ? null : parseFloat(cotizadoRaw);
+      if(!pagadaTouched){
+        pagadaEl.value = cant && precio ? round2(cant*precio) : '';
+      }
+      // Si Cotizado a queda vacío, conservar la ganancia que ya tenía el envío.
+      if(!gananciaTouched && cotizado!==null){
+        gananciaEl.value = round2(cant*(cotizado-precio));
+      }
+    }
+    validarCotizado();
+  }
+  [cantidadEl, precioEl, cotizadoEl].forEach(el=>el.addEventListener('input', recalc));
+  pagadaEl.addEventListener('input', ()=>{ pagadaTouched = true; });
+  gananciaEl.addEventListener('input', ()=>{ gananciaTouched = true; });
+  // Solo validar al abrir: no se recalculan los valores guardados inicialmente.
   validarCotizado();
 
   document.getElementById('ee-cancel').onclick = closeModal;

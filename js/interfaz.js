@@ -241,6 +241,9 @@ function openEntityPicker(modo, onPick){
     newBtn.onclick = ()=>{
       openClienteFormModal(null, (cliente)=>{
         onPick(cliente, 'cliente');
+        // El formulario hijo ya se cerró: cerrar también el selector para
+        // devolver el control al formulario que lo abrió.
+        closeModal();
       });
     };
   }
@@ -249,6 +252,9 @@ function openEntityPicker(modo, onPick){
     newBtnTr.onclick = ()=>{
       openTrabajadorFormModal(null, (trabajador)=>{
         onPick(trabajador, 'trabajador');
+        // El formulario hijo ya se cerró: cerrar también el selector para
+        // devolver el control al formulario que lo abrió.
+        closeModal();
       });
     };
   }

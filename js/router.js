@@ -24,6 +24,7 @@ function setActiveMenu(view){
 /* ---- Preservar posición de scroll al navegar entre vistas (rutas) ---- */
 const scrollMemory = {};
 let currentRouteView = null;
+let currentRouteHash = location.hash;
 function getScrollY(){ return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0; }
 function saveCurrentScroll(){
   if(currentRouteView) scrollMemory[currentRouteView] = getScrollY();
@@ -39,7 +40,7 @@ function route(){
   const {view, param} = parseHash();
   saveCurrentScroll();
   setActiveMenu(view);
-  closeSideMenu();
+  cerrarOverlaysAlCambiarRuta();
   modalScrollStack.length = 0; // evita arrastrar posiciones de modales de la vista anterior
   currentRouteView = view;
   const content = document.getElementById('app-content');
@@ -71,6 +72,7 @@ function route(){
   duplicadoEnvioPendiente = null; // si la vista no lo usó, se descarta
   actualizarFabEnvio();
   restoreScrollFor(view);
+  currentRouteHash = location.hash;
 }
 
 /* ---- Botón flotante "Registrar envío" ----
@@ -86,14 +88,112 @@ function actualizarFabEnvio(){
 }
 
 function openSideMenu(){
-  document.getElementById('side-menu').classList.add('open');
+  const menu = document.getElementById('side-menu');
+  if(menu.classList.contains('open')) return;
+  const entrada = registrarOverlayEnHistorial('sidebar');
+  activeSideMenuOverlayId = entrada.id;
+  menu.classList.add('open');
   document.getElementById('side-overlay').classList.add('open');
 }
-function closeSideMenu(){
-  document.getElementById('side-menu').classList.remove('open');
-  document.getElementById('side-overlay').classList.remove('open');
+function closeSideMenuSinHistoryBack(){
+  const menu = document.getElementById('side-menu');
+  if(menu) menu.classList.remove('open');
+  const overlay = document.getElementById('side-overlay');
+  if(overlay) overlay.classList.remove('open');
+  activeSideMenuOverlayId = null;
+}
+function closeSideMenu(alCerrar){
+  const menu = document.getElementById('side-menu');
+  if(!menu || !menu.classList.contains('open')){
+    if(typeof alCerrar==='function') alCerrar();
+    return;
+  }
+  const id = activeSideMenuOverlayId;
+  closeSideMenuSinHistoryBack();
+  if(!iniciarRegresoOverlay('sidebar', id, alCerrar)){
+    overlayHistoryStack = overlayHistoryStack.filter(x=>x.id!==id);
+    if(typeof alCerrar==='function') alCerrar();
+  }
 }
 
+function cerrarOverlaysAlCambiarRuta(){
+  closeModalSinHistoryBack();
+  closeSideMenuSinHistoryBack();
+  modalScrollStack.length = 0;
+  overlayHistoryStack = [];
+  activeModalOverlayId = null;
+  activeSideMenuOverlayId = null;
+  const state = {...((history.state && typeof history.state==='object') ? history.state : {})};
+  delete state[OVERLAY_HISTORY_KEY];
+  try{ history.replaceState(state, '', location.href); }catch(err){}
+}
+
+function manejarPopstateOverlays(event){
+  const destino = obtenerPilaOverlaysEstado(event.state);
+  if(overlayHistoryBackPending){
+    overlayHistoryBackPending = false;
+    overlayHistoryStack = destino;
+    const pendiente = pendingOverlayOpen;
+    pendingOverlayOpen = null;
+    if(pendiente){
+      const root = document.getElementById('modal-root');
+      const menu = document.getElementById('side-menu');
+      const visible = pendiente.tipo==='modal'
+        ? !!(root && root.innerHTML.trim() && activeModalOverlayId===pendiente.id)
+        : !!(menu && menu.classList.contains('open') && activeSideMenuOverlayId===pendiente.id);
+      if(visible){
+        const nueva = overlayHistoryStack.concat([pendiente]);
+        try{
+          history.pushState({...((history.state && typeof history.state==='object') ? history.state : {}), [OVERLAY_HISTORY_KEY]:nueva}, '', location.href);
+          overlayHistoryStack = nueva;
+        }catch(err){}
+      }
+    }
+    const alRegresar = pendingOverlayNavigation;
+    pendingOverlayNavigation = null;
+    if(typeof alRegresar==='function') alRegresar();
+    return;
+  }
+
+  const actual = overlayHistoryStack.slice();
+  let comunes = 0;
+  while(comunes<actual.length && comunes<destino.length &&
+        actual[comunes].id===destino[comunes].id &&
+        actual[comunes].tipo===destino[comunes].tipo) comunes++;
+  for(let i=actual.length-1; i>=comunes; i--){
+    const salida = actual[i];
+    if(salida.tipo==='modal' && activeModalOverlayId===salida.id){
+      closeModalSinHistoryBack();
+    }else if(salida.tipo==='sidebar' && activeSideMenuOverlayId===salida.id){
+      closeSideMenuSinHistoryBack();
+    }
+  }
+
+  const root = document.getElementById('modal-root');
+  const menu = document.getElementById('side-menu');
+  const pilaDestinoTieneSuperposicionesOcultas = destino.some(x=>
+    x.tipo==='modal'
+      ? !(root && root.innerHTML.trim() && activeModalOverlayId===x.id)
+      : !(menu && menu.classList.contains('open') && activeSideMenuOverlayId===x.id)
+  );
+  if(pilaDestinoTieneSuperposicionesOcultas){
+    overlayHistoryStack = [];
+    if(location.hash!==currentRouteHash){
+      const state = {...((history.state && typeof history.state==='object') ? history.state : {})};
+      delete state[OVERLAY_HISTORY_KEY];
+      try{ history.replaceState(state, '', location.href); }catch(err){}
+    }else{
+      // Entrada antigua de un modal/menú ya cerrado: saltarla evita un paso
+      // "fantasma" de Atrás cuando el contenido ya no existe.
+      history.back();
+    }
+    return;
+  }
+
+  overlayHistoryStack = destino;
+}
+
+window.addEventListener('popstate', manejarPopstateOverlays);
 window.addEventListener('hashchange', route);
 
 async function bootstrap(){
@@ -107,9 +207,18 @@ async function bootstrap(){
 
   document.getElementById('btn-menu').addEventListener('click', openSideMenu);
   document.getElementById('fab-envio').addEventListener('click', ()=>{ location.hash = '#/envio'; });
-  document.getElementById('side-overlay').addEventListener('click', closeSideMenu);
+  document.getElementById('side-overlay').addEventListener('click', ()=>closeSideMenu());
   document.querySelectorAll('.menu-list a').forEach(a=>{
-    a.addEventListener('click', closeSideMenu);
+    a.addEventListener('click', (e)=>{
+      const menu = document.getElementById('side-menu');
+      if(!menu.classList.contains('open')) return;
+      const href = a.getAttribute('href');
+      if(!href || !href.startsWith('#')){ closeSideMenu(); return; }
+      e.preventDefault();
+      closeSideMenu(()=>{
+        if(location.hash!==href) location.hash = href;
+      });
+    });
   });
   if(!location.hash) location.hash = '#/balance';
   route();

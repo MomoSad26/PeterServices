@@ -16,7 +16,10 @@ function renderListadoPaginado(content, cfg){
   const listEl = document.getElementById(`${cfg.prefijo}-list`);
   function refresh(){
     if(!document.body.contains(listEl)) return; // el usuario ya cambió de pantalla
-    const items = DB[cfg.clave].filter(r=>!r.archivado).sort(ordenFechaDesc);
+    const items = DB[cfg.clave]
+      .filter(r=>busquedaFiltrandoLista(cfg.clave) || !r.archivado)
+      .filter(r=>busquedaFiltrarRegistroLista(cfg.clave,r))
+      .sort(ordenFechaDesc);
     const pag = paginarArray(items, estado);
     listEl.innerHTML = items.length ? pag.items.map(cfg.rowHtml).join('') : emptyState(cfg.vacioIcono, cfg.vacioTexto);
     aplicarZebra(listEl, items.length);

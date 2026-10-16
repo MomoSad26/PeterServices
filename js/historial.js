@@ -428,6 +428,9 @@ function openEnvioEditModal(id, onSaved){
     };
 
     confirmDialog('¿Guardar los cambios de este envío? Se ajustará el balance general y la deuda asociada, si existe.', ()=>{
+      // confirmDialog ocupa una capa sobre este formulario; al confirmar
+      // se cierra primero la confirmación y luego el editor ya guardado.
+      closeModal();
       guardarEdicionEnvio(e, nuevo);
       toast('Envío actualizado');
       onSaved && onSaved();

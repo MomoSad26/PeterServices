@@ -446,11 +446,10 @@ function volverDesdeEnvioDetalle(){
   const divisa = retornoHistorialDivisa;
   retornoHistorialDivisa = null;
   if(divisa){
+    // Deja que el router complete el cambio de ruta antes de reabrir el modal.
+    // Abrirlo aquí mismo provoca que el hashchange posterior lo cierre otra vez.
+    historialDivisaPendienteAlEntrarBalance = divisa;
     location.hash = '#/balance';
-    currentRouteView = 'balance';
-    renderBalance(document.getElementById('app-content'));
-    restoreScrollFor('balance');
-    openHistorialDivisa(divisa);
   } else {
     history.back();
   }
@@ -543,9 +542,15 @@ function irADetalleOriginal(origen, origenId){
     alertDialog('Registro no encontrado', 'No se pudo encontrar el registro original. Es posible que haya sido eliminado.');
     return;
   }
+  if(origen === 'envio'){
+    // No usar closeModal(): dispara history.back() y puede competir con la
+    // navegación al detalle, haciendo que el hash vuelva a Balance.
+    closeModalSinHistoryBack();
+    location.hash = `#/envio-detalle/${origenId}`;
+    return;
+  }
   closeModal();
   switch(origen){
-    case 'envio':  location.hash = `#/envio-detalle/${origenId}`; break;
     case 'venta':  openVentaDetalle(origenId, route); break;
     case 'compra': openCompraDetalle(origenId, route); break;
     case 'gasto':  openGastoDetalle(origenId, route); break;

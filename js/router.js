@@ -72,6 +72,11 @@ function route(){
     case 'ajustes': renderAjustes(content); break;
     default: renderClientesList(content);
   }
+  if(view === 'balance' && historialDivisaPendienteAlEntrarBalance !== null){
+    const divisaRegreso = historialDivisaPendienteAlEntrarBalance;
+    historialDivisaPendienteAlEntrarBalance = null;
+    openHistorialDivisa(divisaRegreso);
+  }
   duplicadoEnvioPendiente = null; // si la vista no lo usó, se descarta
   actualizarFabEnvio();
   restoreScrollFor(view);

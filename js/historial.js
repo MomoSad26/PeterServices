@@ -3,6 +3,7 @@
  * ---------------------------------------------------------------------- */
 let historialFilters = {q:'', tipo:'Todos', fecha:'Todo', fechaDesde:null, fechaHasta:null, forma:'Todas', divisa:'Todas'};
 let retornoHistorialDivisa = null; // (bug preexistente: nunca se declaraba, causaba ReferenceError al volver de un envío)
+let historialDivisaPendienteAlEntrarBalance = null; // reapertura diferida al terminar la navegación de vuelta
 
 function entityNameForEnvio(e){
   if(e.trabajador_id){

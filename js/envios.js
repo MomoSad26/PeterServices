@@ -238,6 +238,9 @@ function showEnvioSummary(envio, entity, onSaved){
     closeModal();
     toast('Envío guardado correctamente');
     onSaved && onSaved();
+    // Con "Descontar ahora: Sí" el envío se entrega en el acto: se ofrece
+    // avisar por WhatsApp. Con "No", se ofrece al marcarlo como pagado en Deudas.
+    if(envio.descuenta_ahora) ofrecerNotificarWhatsApp(envio, envio.fecha_hora, '✅ Envío guardado');
   };
 }
 

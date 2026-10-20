@@ -329,7 +329,7 @@ function openDeudaDetalle(id, onChange){
               adjustBalance(d.divisa, -d.monto);
             }
             save(); closeModal(); toast('Envío marcado como pagado — pasó al Historial'); onChange && onChange();
-            // El pago ya quedó guardado; ahora solo se OFRECE avisar al cliente.
+            // El pago ya quedó guardado; ahora solo se OFRECE avisar (cliente o trabajador).
             ofrecerNotificarWhatsApp(envioOrigen, d.fecha_cierre);
           }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
           return;
@@ -385,8 +385,13 @@ function openDeudaDetalle(id, onChange){
 }
 
 /* ---------------------------------------------------------------------- *
- * 18b. NOTIFICAR POR WHATSAPP AL PAGAR UN ENVÍO
- *      Solo envíos a cliente (cliente_directo) cuyo cliente tenga número.
+ * 18b. NOTIFICAR POR WHATSAPP CUANDO SE ENTREGA UN ENVÍO
+ *      Se ofrece en los dos momentos en que un envío queda entregado:
+ *      · Al marcar como pagada su deuda en Deudas → Pagar a (switch "No").
+ *      · Al guardarlo con "Descontar ahora: Sí" (se entrega en el acto),
+ *        incluidos los de precio especial.
+ *      Se avisa a quien corresponda: al TRABAJADOR si el envío lo gestionó
+ *      él, o al CLIENTE si es un envío directo. Solo si tiene número.
  *      Se abre WhatsApp con el mensaje escrito; el usuario lo revisa y
  *      pulsa "Enviar" él mismo (no se envía nada automáticamente).
  * ---------------------------------------------------------------------- */
@@ -400,34 +405,56 @@ function fechaDDMMAAAA(ts){
   const d = new Date(ts);
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 }
-function mensajeWhatsAppEnvioPagado(cliente, envio, fechaPago){
-  return `Hola ${cliente.nombre},\n` +
-    `Su envío de ${fmtMoney(envio.cantidad_enviada)} ${envio.moneda} fue entregado.\n` +
+// A quién avisar de este envío: {persona, rol:'cliente'|'trabajador'} o null.
+// Un cliente o trabajador eliminado (inactivo) también se puede notificar:
+// su número sigue guardado.
+function destinatarioWhatsAppEnvio(envio){
+  if(!envio) return null;
+  let persona = null, rol = null;
+  if(envio.trabajador_id){
+    persona = DB.trabajadores.find(t=>t.id===envio.trabajador_id); rol = 'trabajador';
+  } else if(envio.cliente_id!=null){
+    persona = DB.clientes.find(c=>c.id===envio.cliente_id); rol = 'cliente';
+  }
+  if(!persona || !limpiarNumeroWhatsApp(persona.telefono)) return null;
+  return {persona, rol};
+}
+function mensajeWhatsAppEnvioEntregado(dest, envio, fechaEntrega){
+  const datos =
     `Cantidad: ${fmtMoney(envio.cantidad_pagada)} ${envio.divisa_entrega}\n` +
-    `Fecha ${fechaDDMMAAAA(fechaPago)}\n` +
+    `Fecha ${fechaDDMMAAAA(fechaEntrega)}\n`;
+  if(dest.rol==='trabajador'){
+    return `Hola ${dest.persona.nombre},\n` +
+      `La remesa de ${fmtMoney(envio.cantidad_enviada)} ${envio.moneda} que usted gestionó fue entregada.\n` +
+      datos +
+      `Muchas gracias por su trabajo.`;
+  }
+  return `Hola ${dest.persona.nombre},\n` +
+    `Su envío de ${fmtMoney(envio.cantidad_enviada)} ${envio.moneda} fue entregado.\n` +
+    datos +
     `Muchas gracias por confiar en nosotros.`;
 }
-function abrirWhatsAppCliente(cliente, envio, fechaPago){
-  const numero = limpiarNumeroWhatsApp(cliente && cliente.telefono);
+function abrirWhatsAppEnvio(dest, envio, fechaEntrega){
+  const numero = limpiarNumeroWhatsApp(dest && dest.persona.telefono);
   if(!numero) return;
-  const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensajeWhatsAppEnvioPagado(cliente, envio, fechaPago))}`;
+  const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensajeWhatsAppEnvioEntregado(dest, envio, fechaEntrega))}`;
   // En la APK, Android abre WhatsApp directamente; en el navegador, una pestaña nueva.
   if(window.AndroidBridge && window.AndroidBridge.openExternal){ window.AndroidBridge.openExternal(url); return; }
   window.open(url, '_blank');
 }
-function ofrecerNotificarWhatsApp(envio, fechaPago){
-  if(!envio || envio.tipo!=='cliente_directo') return;
-  // Un cliente eliminado (inactivo) también se puede notificar: su número sigue guardado.
-  const cliente = DB.clientes.find(c=>c.id===envio.cliente_id);
-  if(!cliente || !limpiarNumeroWhatsApp(cliente.telefono)) return;
+// titulo: el resultado de la acción que acaba de completarse (ya guardada).
+function ofrecerNotificarWhatsApp(envio, fechaEntrega, titulo='✅ Envío marcado como pagado'){
+  const dest = destinatarioWhatsAppEnvio(envio);
+  if(!dest) return;
+  const quien = dest.rol==='trabajador' ? `al trabajador <strong>${escapeHtml(dest.persona.nombre)}</strong>` : `a <strong>${escapeHtml(dest.persona.nombre)}</strong>`;
   openModal(`
-    <div class="modal-title">✅ Envío marcado como pagado</div>
-    <div class="modal-msg">¿Deseas notificar a <strong>${escapeHtml(cliente.nombre)}</strong> por WhatsApp?</div>
+    <div class="modal-title">${titulo}</div>
+    <div class="modal-msg">¿Deseas notificar ${quien} por WhatsApp?</div>
     <div class="modal-actions">
       <button class="btn btn-outline btn-block" id="wa-no">No</button>
       <button class="btn btn-gold btn-block" id="wa-si">Sí</button>
     </div>
   `, {center:true});
   document.getElementById('wa-no').onclick = closeModal;
-  document.getElementById('wa-si').onclick = ()=>{ closeModal(); abrirWhatsAppCliente(cliente, envio, fechaPago); };
+  document.getElementById('wa-si').onclick = ()=>{ closeModal(); abrirWhatsAppEnvio(dest, envio, fechaEntrega); };
 }

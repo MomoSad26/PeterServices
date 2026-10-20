@@ -139,6 +139,8 @@ function renderPrecioEspecialForm(content){
         save(); closeModal();
         toast('Envío guardado correctamente');
         renderPrecioEspecialForm(content);
+        // Precio especial siempre descuenta en el acto: el envío ya se entregó.
+        ofrecerNotificarWhatsApp(envio, envio.fecha_hora, '✅ Envío guardado');
       };
     }
 

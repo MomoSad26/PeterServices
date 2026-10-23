@@ -2,16 +2,20 @@
  * PANEL — resumen operativo del día. Solo consulta datos existentes:
  * no modifica cálculos, saldos ni registros.
  * ---------------------------------------------------------------------- */
-function panelRangoHoy(){
-  const desde = todayRangeStart();
+let panelDiaSeleccionado = 'Hoy';
+function panelRangoDia(dia = panelDiaSeleccionado){
+  const desde = new Date(todayRangeStart());
+  if(dia === 'Ayer') desde.setDate(desde.getDate()-1);
   const siguiente = new Date(desde);
   siguiente.setDate(siguiente.getDate()+1);
-  return {desde, hasta:siguiente.getTime()};
+  return {desde:desde.getTime(), hasta:siguiente.getTime()};
 }
-function panelEsDeHoy(ts, rango){
+function panelRangoHoy(){ return panelRangoDia('Hoy'); }
+function panelEsDelDia(ts, rango){
   const n = Number(ts);
   return Number.isFinite(n) && n>=rango.desde && n<rango.hasta;
 }
+function panelEsDeHoy(ts, rango){ return panelEsDelDia(ts, rango); }
 function panelAgruparMontos(registros, campoDivisa, obtenerMonto){
   const grupos = new Map();
   registros.forEach(reg=>{
@@ -55,55 +59,74 @@ function panelEstadoRespaldo(){
   const dias = Math.max(1, Math.round((hoy.getTime()-fechaUltimo.getTime())/86400000));
   return `Hace ${dias} ${dias===1?'día':'días'}`;
 }
-function renderPanel(content){
-  const rango = panelRangoHoy();
-  const enviosHoyTodos = (DB.envios||[]).filter(e=>panelEsDeHoy(e.fecha_hora,rango));
-  const enviosHoy = enviosHoyTodos.filter(e=>!e.archivado);
-  const gastosHoy = (DB.gastos||[]).filter(g=>panelEsDeHoy(g.fecha_hora,rango));
-  const comprasHoy = (DB.compras||[]).filter(c=>panelEsDeHoy(c.fecha_hora,rango));
-  const ventasHoy = (DB.ventas||[]).filter(v=>panelEsDeHoy(v.fecha_hora,rango));
+function renderPanel(content, conservarDia=false){
+  if(!conservarDia) panelDiaSeleccionado = 'Hoy';
+  const rango = panelRangoDia(panelDiaSeleccionado);
+  const palabraDia = panelDiaSeleccionado === 'Ayer' ? 'ayer' : 'hoy';
+  const enviosDiaTodos = (DB.envios||[]).filter(e=>panelEsDelDia(e.fecha_hora,rango));
+  const enviosDia = enviosDiaTodos.filter(e=>!e.archivado);
+  const gastosDia = (DB.gastos||[]).filter(g=>panelEsDelDia(g.fecha_hora,rango));
+  const comprasDia = (DB.compras||[]).filter(c=>panelEsDelDia(c.fecha_hora,rango));
+  const ventasDia = (DB.ventas||[]).filter(v=>panelEsDelDia(v.fecha_hora,rango));
   const cobrarPendiente = (DB.deudas||[]).filter(d=>d.tipo==='me_deben' && d.estado==='pendiente').length;
   const pagarPendiente = (DB.deudas||[]).filter(d=>d.tipo==='pagar_a' && d.estado==='pendiente').length;
-  // La ganancia se agrupa usando el valor guardado del envío. No se vuelve
-  // a calcular ni se modifica ninguna fórmula financiera existente.
   const gananciasPorDivisa = panelAgruparMontos(
-    enviosHoyTodos.slice().sort((a,b)=>Number(b.fecha_hora||0)-Number(a.fecha_hora||0)),
+    enviosDiaTodos.slice().sort((a,b)=>Number(b.fecha_hora||0)-Number(a.fecha_hora||0)),
     'divisa_ganancia', e=>e.ganancia
   );
-  // El gasto es una salida de dinero: se muestra con signo negativo, igual
-  // que los movimientos de gasto del Balance.
   const gastosPorDivisa = panelAgruparMontos(
-    gastosHoy.slice().sort((a,b)=>Number(b.fecha_hora||0)-Number(a.fecha_hora||0)),
+    gastosDia.slice().sort((a,b)=>Number(b.fecha_hora||0)-Number(a.fecha_hora||0)),
     'divisa', g=>-Math.abs(Number(g.cantidad)||0)
   );
+
   content.innerHTML = `
     <h1 class="section-title">📊 Panel</h1>
-    <div class="panel-date">Resumen del día · ${escapeHtml(fmtDateShort(Date.now()))}</div>
+    <div class="panel-day-selector" role="group" aria-label="Día del Panel">
+      <button type="button" class="btn ${panelDiaSeleccionado==='Hoy'?'btn-primary':'btn-outline'}" data-panel-dia="Hoy" aria-pressed="${panelDiaSeleccionado==='Hoy'}">Hoy</button>
+      <button type="button" class="btn ${panelDiaSeleccionado==='Ayer'?'btn-primary':'btn-outline'}" data-panel-dia="Ayer" aria-pressed="${panelDiaSeleccionado==='Ayer'}">Ayer</button>
+    </div>
+    <div class="panel-date">Resumen del día · ${escapeHtml(fmtDateShort(rango.desde))}</div>
     <div class="panel-rows">
-      ${panelFila('📤','Envíos registrados hoy',String(enviosHoy.length),'envios')}
-      ${panelFila('⏳','Deudas pendientes por cobrar',String(cobrarPendiente),'cobrar')}
-      ${panelFila('⏳','Deudas pendientes por pagar',String(pagarPendiente),'pagar')}
-      ${panelFila('💰','Ganancia de hoy',panelValorPorDivisa(gananciasPorDivisa),'balance',true)}
-      ${panelFila('🧾','Gastos de hoy',panelValorPorDivisa(gastosPorDivisa),'balance',true)}
-      ${panelFila('🛒','Compras de hoy',String(comprasHoy.length),'compras')}
-      ${panelFila('💱','Ventas de hoy',String(ventasHoy.length),'ventas')}
+      ${panelFila('📤',`Envíos registrados ${palabraDia}`,String(enviosDia.length),'envios')}
+      ${panelFila('⏳','Me deben:',String(cobrarPendiente),'cobrar')}
+      ${panelFila('⏳','Pagar a:',String(pagarPendiente),'pagar')}
+      ${panelFila('💰',`Ganancia de ${palabraDia}`,panelValorPorDivisa(gananciasPorDivisa),'balance',true)}
+      ${panelFila('🧾',`Gastos de ${palabraDia}`,panelValorPorDivisa(gastosPorDivisa),'balance',true)}
+      ${panelFila('🛒',`Compras de ${palabraDia}`,String(comprasDia.length),'compras')}
+      ${panelFila('💱',`Ventas de ${palabraDia}`,String(ventasDia.length),'ventas')}
       ${panelFila('⚠️','Respaldo',escapeHtml(panelEstadoRespaldo()),'respaldos')}
     </div>
   `;
+  content.querySelectorAll('[data-panel-dia]').forEach(button=>{
+    button.addEventListener('click',()=>{
+      panelDiaSeleccionado = button.dataset.panelDia === 'Ayer' ? 'Ayer' : 'Hoy';
+      renderPanel(content, true);
+    });
+  });
   content.querySelectorAll('[data-panel-action]').forEach(row=>{
     row.addEventListener('click',()=>{
       const accion = row.dataset.panelAction;
+      const rangoActual = panelRangoDia(panelDiaSeleccionado);
+      const esAyer = panelDiaSeleccionado === 'Ayer';
       if(accion==='envios'){
-        historialFilters = {q:'',tipo:'Todos',fecha:'Hoy',fechaDesde:null,fechaHasta:null,forma:'Todas',divisa:'Todas'};
+        historialFilters = esAyer
+          ? {q:'',tipo:'Todos',fecha:'Personalizado',fechaDesde:rangoActual.desde,fechaHasta:rangoActual.hasta-1,forma:'Todas',divisa:'Todas'}
+          : {q:'',tipo:'Todos',fecha:'Hoy',fechaDesde:null,fechaHasta:null,forma:'Todas',divisa:'Todas'};
         panelIrA('#/historial');
       }else if(accion==='cobrar'){
         panelIrA('#/deudas/me_deben');
       }else if(accion==='pagar'){
         panelIrA('#/deudas/pagar_a');
       }else if(accion==='balance'){
-        balancePeriod = 'Hoy';
-        balanceCustomDesde = null;
-        balanceCustomHasta = null;
+        if(esAyer){
+          balancePeriod = 'Personalizado';
+          balanceCustomDesde = rangoActual.desde;
+          balanceCustomHasta = rangoActual.hasta-1;
+        }else{
+          balancePeriod = 'Hoy';
+          balanceCustomDesde = null;
+          balanceCustomHasta = null;
+        }
         panelIrA('#/balance');
       }else if(accion==='gastos'){
         panelIrA('#/gastos');

@@ -5,7 +5,7 @@ const TITLES = {
   panel:'Panel', busqueda:'Buscar', clientes:'Clientes', envio:'Nuevo envío', trabajadores:'Trabajadores',
   'precio-especial':'Precio especial', historial:'Historial de envíos',
   compras:'Compras', ventas:'Ventas', gastos:'Gastos', 'in-out':'In/Out',
-  balance:'Balance', respaldos:'Respaldos', deudas:'Deudas', ajustes:'Ajustes'
+  balance:'Balance', respaldos:'Respaldos', deudas:'Deudas', ajustes:'Ajustes', entregas:'Entregas'
 };
 
 function parseHash(){
@@ -60,6 +60,7 @@ function route(){
     case 'trabajadores': renderTrabajadoresList(content); break;
     case 'trabajador-detalle': renderTrabajadorDetalle(content, Number(param)); break;
     case 'envio-trabajador': renderEnvioTrabajadorForm(content, Number(param)); break;
+    case 'entregas': renderEntregas(content, param); break;
     case 'historial': renderHistorial(content, param); break;
     case 'envio-detalle': renderEnvioDetalle(content, Number(param)); break;
     case 'ventas': renderVentasList(content); break;
@@ -86,7 +87,7 @@ function route(){
 /* ---- Botón flotante "Registrar envío" ----
    Visible en las pantallas de listados. Si la pantalla ya tiene su propio
    botón "+" (Clientes, Trabajadores, Deudas), se coloca encima de él. */
-const VISTAS_CON_FAB_ENVIO = ['clientes','trabajadores','historial','compras','ventas','gastos','in-out','deudas'];
+const VISTAS_CON_FAB_ENVIO = ['clientes','trabajadores','entregas','historial','compras','ventas','gastos','in-out','deudas'];
 function actualizarFabEnvio(){
   const fab = document.getElementById('fab-envio');
   if(!fab) return;

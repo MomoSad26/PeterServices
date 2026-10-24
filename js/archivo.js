@@ -190,6 +190,38 @@ function mergeImport(incoming){
     trabajadorIdMap[t.id] = local.id;
   });
 
+  // Entregas: destinatarios y mensajeros (se unifican si ya existen).
+  const destinatarioIdMap = {}, mensajeroIdMap = {};
+  (incoming.destinatarios||[]).forEach(d=>{
+    if(!d || !d.nombre) return;
+    let local = DB.destinatarios.find(x=>normalizarTexto(x.nombre)===normalizarTexto(d.nombre) &&
+      normalizarTexto(x.nombre_completo)===normalizarTexto(d.nombre_completo) && String(x.carnet||'')===String(d.carnet||''));
+    if(local){
+      ['telefono','direccion','nota'].forEach(k=>{ if(!local[k] && d[k]) local[k] = d[k]; });
+      actualizados++;
+    } else {
+      local = {id:nextId('destinatarios'), nombre:d.nombre, nombre_completo:d.nombre_completo||'', carnet:d.carnet||'',
+        telefono:d.telefono||'', direccion:d.direccion||'', nota:d.nota||'', fecha_registro:d.fecha_registro||Date.now(), activo:d.activo!==undefined?d.activo:1};
+      DB.destinatarios.push(local);
+      insertados++;
+    }
+    destinatarioIdMap[d.id] = local.id;
+  });
+  (incoming.mensajeros||[]).forEach(m=>{
+    if(!m || !m.nombre) return;
+    let local = DB.mensajeros.find(x=>normalizarTexto(x.nombre)===normalizarTexto(m.nombre) &&
+      (!x.telefono || !m.telefono || limpiarNumeroWhatsApp(x.telefono)===limpiarNumeroWhatsApp(m.telefono)));
+    if(local){
+      ['telefono','nota'].forEach(k=>{ if(!local[k] && m[k]) local[k] = m[k]; });
+      actualizados++;
+    } else {
+      local = {id:nextId('mensajeros'), nombre:m.nombre, telefono:m.telefono||'', nota:m.nota||'', fecha_registro:m.fecha_registro||Date.now(), activo:m.activo!==undefined?m.activo:1};
+      DB.mensajeros.push(local);
+      insertados++;
+    }
+    mensajeroIdMap[m.id] = local.id;
+  });
+
   const envioIdMap = {};
   (incoming.envios||[]).forEach(e=>{
     if(!e || !e.tipo) return;
@@ -207,6 +239,8 @@ function mergeImport(incoming){
     );
     if(dup){ omitidos++; envioIdMap[e.id] = dup.id; return; }
     const nuevo = {...e, id:nextId('envios'), cliente_id:localClienteId, trabajador_id:localTrabajadorId,
+      destinatario_id: e.destinatario_id!=null ? (destinatarioIdMap[e.destinatario_id] ?? null) : null,
+      mensajero_notificado_id: e.mensajero_notificado_id!=null ? (mensajeroIdMap[e.mensajero_notificado_id] ?? null) : null,
       cantidad_enviada:numFinito(e.cantidad_enviada), precio:numFinito(e.precio),
       cantidad_pagada:numFinito(e.cantidad_pagada), ganancia:numFinito(e.ganancia),
       cotizado_a: (e.cotizado_a===null || e.cotizado_a===undefined) ? e.cotizado_a : numFinito(e.cotizado_a, 0)};

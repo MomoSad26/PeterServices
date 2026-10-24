@@ -185,6 +185,8 @@ function renderEnvioDetalle(content, id){
       <div class="sumrow"><span class="k">Ganancia</span><span class="v">${fmtMoney(envioGananciaMostrada(e))}</span></div>
       <div class="sumrow"><span class="k">Divisa de ganancia</span><span class="v">${escapeHtml(e.divisa_ganancia)}</span></div>
       <div class="sumrow"><span class="k">Forma de ganancia</span><span class="v">${escapeHtml(e.forma_ganancia)}</span></div>
+      ${e.destinatario_id!=null ? `<div class="sumrow"><span class="k">Destinatario</span><span class="v">${escapeHtml(destinatarioNombreDeEnvio(e))}</span></div>` : ''}
+      ${e.mensajero_notificado_fecha ? `<div class="sumrow"><span class="k">Mensajero notificado</span><span class="v">${escapeHtml(mensajeroNotificadoTexto(e))}</span></div>` : ''}
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(e.nota || 'Sin nota')}</span></div>
     </div>
     <div class="modal-actions" style="margin-top:14px;">
@@ -273,6 +275,8 @@ function openEnvioEditModal(id, onSaved){
       <span>🔍</span>
     </div>
 
+    ${destinatarioCampoHtml('ee', destinatarioActivoDeEnvio(e))}
+
     <label class="field-label">Cantidad enviada *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ee-cantidad" value="${e.cantidad_enviada}">
 
@@ -326,6 +330,9 @@ function openEnvioEditModal(id, onSaved){
   bindAddOnSelect(document.getElementById('ee-moneda'), addMoneda, monedaOptionsHtml);
   bindAddOnSelect(document.getElementById('ee-divisa-entrega'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(document.getElementById('ee-divisa-ganancia'), addDivisa, divisaOptionsHtml);
+
+  const destInicial = destinatarioActivoDeEnvio(e);
+  const getDestinatario = wireDestinatarioCampo('ee', destInicial);
 
   document.getElementById('ee-entity-picker').onclick = ()=>{
     openEntityPicker(pickerModo, (item, tipo)=>{
@@ -434,6 +441,12 @@ function openEnvioEditModal(id, onSaved){
       fecha_hora: new Date(fechaVal).getTime(), nota,
       descuenta_ahora: e.tipo==='precio_especial' ? 1 : descuentaAhoraSel
     };
+    // El destinatario solo se toca si el usuario lo cambió (así un envío cuyo
+    // destinatario fue eliminado conserva ese dato histórico al editarlo).
+    const destElegido = getDestinatario();
+    if((destElegido ? destElegido.id : null) !== (destInicial ? destInicial.id : null)){
+      nuevo.destinatario = destElegido; // null = quitar
+    }
 
     confirmDialog('¿Guardar los cambios de este envío? Se ajustará el balance general y la deuda asociada, si existe.', ()=>{
       // confirmDialog ocupa una capa sobre este formulario; al confirmar
@@ -471,6 +484,10 @@ function guardarEdicionEnvio(e, nuevo){
   e.forma_ganancia = nuevo.forma_ganancia;
   e.fecha_hora = nuevo.fecha_hora;
   e.nota = nuevo.nota;
+  if('destinatario' in nuevo){
+    e.destinatario_id = nuevo.destinatario ? nuevo.destinatario.id : null;
+    e.destinatario_nombre = nuevo.destinatario ? nuevo.destinatario.nombre : '';
+  }
   if(e.tipo !== 'precio_especial') e.descuenta_ahora = newDescuentaAhora ? 1 : 0;
 
   const entityNombre = entityNameForEnvio(e);

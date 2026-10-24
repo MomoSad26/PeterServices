@@ -31,6 +31,8 @@ function envioFormHtml(opts){
       <input type="text" value="${escapeHtml(opts.entityName)}" disabled>
     `}
 
+    ${destinatarioCampoHtml('ef', p ? destinatarioActivoDeEnvio(p) : null)}
+
     <label class="field-label">Cantidad enviada *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ef-cantidad" placeholder="0.00" value="${val(p?.cantidad_enviada)}">
 
@@ -80,6 +82,39 @@ function envioFormHtml(opts){
   `;
 }
 
+/* ---- Campo opcional "Destinatario" (Menú Entregas) ----
+   Lo usan el formulario de envío y la edición de envíos. `pref` es el
+   prefijo de los ids (ef = nuevo envío, ee = edición). */
+function destinatarioCampoHtml(pref, dest){
+  return `
+    <label class="field-label">Destinatario (quien recibe)</label>
+    <div style="display:flex;gap:8px;align-items:stretch;">
+      <div class="picker" id="${pref}-dest-picker" style="flex:1;min-width:0;">
+        <span id="${pref}-dest-name" class="${dest?'':'ph'}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${dest ? escapeHtml(dest.nombre) : 'Opcional'}</span>
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" id="${pref}-dest-btn" style="flex:none;">${dest ? 'Cambiar' : 'Seleccionar destinatario'}</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="${pref}-dest-quitar" style="flex:none;${dest?'':'display:none;'}" aria-label="Quitar destinatario">✕</button>
+    </div>`;
+}
+// Conecta el campo; devuelve una función que da el destinatario elegido (o null).
+function wireDestinatarioCampo(pref, inicial){
+  let dest = inicial || null;
+  const nameEl = document.getElementById(`${pref}-dest-name`);
+  const btn = document.getElementById(`${pref}-dest-btn`);
+  const quitar = document.getElementById(`${pref}-dest-quitar`);
+  function pintar(){
+    nameEl.textContent = dest ? dest.nombre : 'Opcional';
+    nameEl.classList.toggle('ph', !dest);
+    btn.textContent = dest ? 'Cambiar' : 'Seleccionar destinatario';
+    quitar.style.display = dest ? '' : 'none';
+  }
+  const elegir = ()=> openSelectorEntrega('destinatarios', (d)=>{ if(d){ dest = d; pintar(); } });
+  document.getElementById(`${pref}-dest-picker`).onclick = elegir;
+  btn.onclick = elegir;
+  quitar.onclick = ()=>{ dest = null; pintar(); };
+  return ()=> dest;
+}
+
 function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onSaved, prefill}){
   const cantEl = document.getElementById('ef-cantidad');
   const precioEl = document.getElementById('ef-precio');
@@ -90,6 +125,7 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
   const divGananciaEl = document.getElementById('ef-divisa-ganancia');
   const monedaEl = document.getElementById('ef-moneda');
   const notaEl = document.getElementById('ef-nota');
+  const getDestinatario = wireDestinatarioCampo('ef', prefill ? destinatarioActivoDeEnvio(prefill) : null);
   let pagadaTouched = false, gananciaTouched = false;
   let formaGanancia = 'Efectivo';
   let descuentaAhora = 0;
@@ -192,7 +228,11 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
       cotizado_a, ganancia, divisa_entrega, divisa_ganancia,
       forma_ganancia: formaGanancia, nota,
       fecha_hora: new Date(fechaVal).getTime(),
-      descuenta_ahora: descuentaAhora
+      descuenta_ahora: descuentaAhora,
+      // Se guarda también el nombre: si luego se elimina el destinatario,
+      // el envío conserva el dato histórico.
+      destinatario_id: getDestinatario() ? getDestinatario().id : null,
+      destinatario_nombre: getDestinatario() ? getDestinatario().nombre : ''
     };
     showEnvioSummary(envio, entity, onSaved);
   };
@@ -209,6 +249,7 @@ function showEnvioSummary(envio, entity, onSaved){
       <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(envio.precio)}</span></div>
       <div class="sumrow"><span class="k">Cantidad pagada</span><span class="v">${fmtMoney(envio.cantidad_pagada)}</span></div>
       <div class="sumrow"><span class="k">Divisa de entrega</span><span class="v">${escapeHtml(envio.divisa_entrega)}</span></div>
+      ${envio.destinatario_id!=null ? `<div class="sumrow"><span class="k">Destinatario</span><span class="v">${escapeHtml(envio.destinatario_nombre)}</span></div>` : ''}
       <div class="sumrow"><span class="k">Descontar ahora</span><span class="v">${envio.descuenta_ahora?'Sí':'No — queda pendiente en Deudas'}</span></div>
       <div class="sumrow"><span class="k">Cotizado a</span><span class="v">${envio.cotizado_a!==null?fmtMoney(envio.cotizado_a):'—'}</span></div>
       <div class="sumrow"><span class="k">Ganancia</span><span class="v">${fmtMoney(envio.ganancia)}</span></div>

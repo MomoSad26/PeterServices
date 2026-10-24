@@ -67,6 +67,8 @@ function avisoDuplicadoHtml(){
 function copiaParaDuplicar(registro){
   const c = JSON.parse(JSON.stringify(registro));
   delete c.id; delete c.archivado; delete c.archivado_en; delete c.fecha_hora;
+  // Un envío duplicado es nuevo: todavía no se le avisó a ningún mensajero.
+  delete c.mensajero_notificado_id; delete c.mensajero_notificado_nombre; delete c.mensajero_notificado_fecha;
   return c;
 }
 

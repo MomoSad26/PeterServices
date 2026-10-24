@@ -278,6 +278,9 @@ function openDeudaDetalle(id, onChange){
   const d = DB.deudas.find(x=>x.id===id);
   if(!d) return;
   const esMeDeben = d.tipo==='me_deben';
+  // Datos de entrega (Menú Entregas): solo en deudas que vienen de un envío.
+  const envioDeuda = (!esMeDeben && d.origen==='envio') ? DB.envios.find(x=>x.id===d.origen_id) : null;
+  const puedeEnviarAMensajero = !!envioDeuda && d.estado==='pendiente' && !!destinatarioActivoDeEnvio(envioDeuda);
   openModal(`
     <div class="modal-title">${esMeDeben?'Me deben':'Pagar a'} — ${escapeHtml(d.persona)}</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:8px;">
@@ -287,8 +290,11 @@ function openDeudaDetalle(id, onChange){
       <div class="sumrow"><span class="k">Etiqueta</span><span class="v">${esMeDeben ? meDebenBadgeHtml(d) : afectaBalanceBadgeHtml(d)}</span></div>
       <div class="sumrow"><span class="k">Estado</span><span class="v">${estadoBadgeHtml(d.estado)}</span></div>
       ${d.fecha_cierre ? `<div class="sumrow"><span class="k">${esMeDeben?'Fecha de cobro':'Fecha de pago'}</span><span class="v">${fmtDate(d.fecha_cierre)}</span></div>` : ''}
+      ${envioDeuda && envioDeuda.destinatario_id!=null ? `<div class="sumrow"><span class="k">Destinatario</span><span class="v">${escapeHtml(destinatarioNombreDeEnvio(envioDeuda))}</span></div>` : ''}
+      ${envioDeuda ? `<div class="sumrow" id="dd-mensajero-row" style="${envioDeuda.mensajero_notificado_fecha?'':'display:none;'}"><span class="k">Mensajero notificado</span><span class="v" id="dd-mensajero">${escapeHtml(mensajeroNotificadoTexto(envioDeuda))}</span></div>` : ''}
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(d.nota || 'Sin nota')}</span></div>
     </div>
+    ${puedeEnviarAMensajero ? `<div class="modal-actions"><button class="btn btn-primary btn-block" id="dd-mensajero-btn">📤 Enviar al mensajero</button></div>` : ''}
     <div class="modal-actions" id="dd-actions-top"></div>
     <div class="modal-actions" id="dd-actions-bottom"></div>
   `);
@@ -302,6 +308,13 @@ function openDeudaDetalle(id, onChange){
     actionsBottom.innerHTML = `<button class="btn btn-gold btn-block" id="dd-cerrar">${esMeDeben?'Marcar como cobrado':'Marcar como pagado'}</button>`;
   }
   document.getElementById('dd-aceptar').onclick = volverDesdeDetalleMovimiento;
+  const mensajeroBtn = document.getElementById('dd-mensajero-btn');
+  if(mensajeroBtn) mensajeroBtn.onclick = ()=> enviarEntregaAMensajero(envioDeuda, ()=>{
+    // Al volver del selector, este detalle sigue abierto: se actualiza el dato.
+    const fila = document.getElementById('dd-mensajero-row');
+    const txt = document.getElementById('dd-mensajero');
+    if(fila && txt){ txt.textContent = mensajeroNotificadoTexto(envioDeuda); fila.style.display = ''; }
+  });
 
   const cerrarBtn = document.getElementById('dd-cerrar');
   if(cerrarBtn){

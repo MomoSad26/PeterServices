@@ -149,14 +149,14 @@ function renderBalance(content){
   function refreshFiltered(){
     const totals = computeFilteredBalance(balancePeriod);
     const el = document.getElementById('b-filtered');
-    const divisasConMovimiento = DB.divisas.filter(d => {
+    const divisasConMovimiento = divisasOrdenadasParaBalance().filter(d => {
       const v = Number(totals[d.nombre] || 0);
       return v < -0.5 || v > 0.5;
     });
     el.innerHTML = divisasConMovimiento.length
       ? divisasConMovimiento.map(d=>{
           const v = totals[d.nombre] || 0;
-          return `<div class="bal-card">
+          return `<div class="bal-card" data-divisa="${escapeHtml(d.nombre)}">
             <div class="name">${escapeHtml(d.nombre)}</div>
             <div class="amt ${v<0?'neg':(v>0?'pos':'')}">
               ${v>0?'+':''}${fmtMoney(v)}
@@ -171,7 +171,7 @@ function renderBalance(content){
 
   function refreshGeneral(){
     const el = document.getElementById('b-general');
-    el.innerHTML = DB.divisas.slice().sort((a,b)=>(a.orden||0)-(b.orden||0)).map(d=>`
+    el.innerHTML = divisasOrdenadasParaBalance().map(d=>`
       <div class="bal-card" data-divisa="${escapeHtml(d.nombre)}">
         <div class="name" data-action="ver">${escapeHtml(d.nombre)}</div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -269,6 +269,7 @@ function openEliminarDivisaModal(onDone){
       }
       confirmDialog(`¿Estás seguro de que deseas eliminar la divisa ${escapeHtml(nombre)}? Esta acción no se puede deshacer.`, ()=>{
         DB.divisas = DB.divisas.filter(x=>x.nombre!==nombre);
+        renumerarOrdenBalance();
         save(); toast('Divisa eliminada'); onDone && onDone();
       }, {okLabel:'Aceptar', cancelLabel:'Cancelar'});
     };

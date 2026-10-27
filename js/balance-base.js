@@ -53,6 +53,7 @@ function eliminarDivisaYArchivadosAsociados(nombre){
   DB.in_out = DB.in_out.filter(io=>!(io.archivado && io.divisa===nombre));
   DB.deudas = DB.deudas.filter(d=>!((d.estado==='pagado'||d.estado==='cobrado') && d.divisa===nombre));
   DB.divisas = DB.divisas.filter(x=>x.nombre!==nombre);
+  renumerarOrdenBalance();
   save();
 }
 
@@ -112,14 +113,48 @@ function applyGastoBalance(gasto, sign){
 }
 
 /* ---------------------------------------------------------------------- *
- * 4. AGREGAR ENTIDADES AUXILIARES (divisas, monedas, países)
+ * 4. ORDEN INDEPENDIENTE DE LAS DIVISAS EN BALANCE
+ *    `orden` sigue controlando los desplegables; `orden_balance` solo afecta
+ *    las dos listas del menú Balance.
+ * ---------------------------------------------------------------------- */
+function ordenBalanceDeDivisa(divisa){
+  if(!divisa) return 0;
+  const valor = divisa.orden_balance;
+  if(valor !== undefined && valor !== null && valor !== '' && Number.isFinite(Number(valor))) return Number(valor);
+  return numFinito(divisa.orden, 0);
+}
+function divisasOrdenadasParaBalance(){
+  return DB.divisas.slice().sort((a,b)=>
+    ordenBalanceDeDivisa(a)-ordenBalanceDeDivisa(b) ||
+    numFinito(a.orden,0)-numFinito(b.orden,0) ||
+    numFinito(a.id,0)-numFinito(b.id,0)
+  );
+}
+function aplicarOrdenBalanceLista(divisasOrdenadas){
+  let changed = false;
+  divisasOrdenadas.forEach((divisa, index)=>{
+    const siguiente = index + 1;
+    if(divisa.orden_balance !== siguiente){
+      divisa.orden_balance = siguiente;
+      changed = true;
+    }
+  });
+  return changed;
+}
+function renumerarOrdenBalance(){
+  return aplicarOrdenBalanceLista(divisasOrdenadasParaBalance());
+}
+
+/* ---------------------------------------------------------------------- *
+ * 4b. AGREGAR ENTIDADES AUXILIARES (divisas, monedas, países)
  * ---------------------------------------------------------------------- */
 function addDivisa(nombre){
   nombre = (nombre||'').trim();
   if(!nombre) return null;
   let d = DB.divisas.find(x=>x.nombre.toLowerCase()===nombre.toLowerCase());
   if(d) return d;
-  d = {id:nextId('divisas'), nombre, simbolo:'', orden:DB.divisas.length+1, saldo:0};
+  const ordenBalance = DB.divisas.length ? Math.max(...DB.divisas.map(ordenBalanceDeDivisa)) + 1 : 1;
+  d = {id:nextId('divisas'), nombre, simbolo:'', orden:DB.divisas.length+1, orden_balance:ordenBalance, saldo:0};
   DB.divisas.push(d); save();
   return d;
 }

@@ -482,3 +482,38 @@ label.field-label{display:block;font-size:12.5px;font-weight:700;color:var(--ink
 .date-prev-button{flex:0 0 42px;min-width:42px;min-height:42px;display:inline-flex;align-items:center;justify-content:center;padding:8px;border:1.5px solid var(--line-main);border-radius:var(--radius-sm);background:var(--card-bg);color:var(--ink-main);font-size:14px;font-weight:800;cursor:pointer;touch-action:manipulation;}
 .date-prev-button:active{background:var(--surface-soft,var(--line-main));}
 .date-prev-button:focus-visible{outline:3px solid var(--gold);outline-offset:2px;}
+
+
+/* ---------- Reordenar divisas del Balance ---------- */
+.bal-actions{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px;
+}
+.bal-actions #b-reorder-divisa{grid-column:1/-1;}
+body.balance-reordering #b-add-divisa,
+body.balance-reordering #b-del-divisa,
+body.balance-reordering #b-general .bal-edit,
+body.balance-reordering #b-general .eye-btn{display:none!important;}
+#b-general.balance-reordering{
+  grid-template-columns:minmax(0,1fr);
+  max-height:55vh;max-height:calc(100dvh - 260px);
+  overflow-y:auto;overscroll-behavior:contain;
+  padding:4px;margin:-4px;touch-action:none;
+}
+#b-general.balance-reordering .bal-card{
+  cursor:grab;touch-action:none;
+  transition:transform .18s ease,box-shadow .18s ease,opacity .18s ease;
+}
+#b-general .bal-card.longpress-pending{transform:scale(.99);transition:transform .4s ease;}
+.bal-card-placeholder{
+  box-sizing:border-box;width:100%;border:2px dashed var(--line-main);
+  border-radius:var(--radius);background:var(--surface-soft,var(--card-bg));
+  opacity:.72;min-height:50px;
+}
+.bal-card-dragging{
+  box-shadow:0 16px 32px rgba(0,0,0,.28)!important;
+  opacity:.9!important;transform:scale(1.02);z-index:10000;
+  cursor:grabbing!important;pointer-events:none!important;
+}
+@media (max-width:360px){
+  .bal-actions .btn{font-size:12px;padding-left:7px;padding-right:7px;}
+}

@@ -129,17 +129,48 @@ function openVerArchivadosModal(){
 function mergeImport(incoming){
   let insertados=0, actualizados=0, omitidos=0;
 
-  (incoming.divisas||[]).forEach(d=>{
-    if(!d || !d.nombre) return;
+  const divisasEntrantes = (incoming.divisas||[]).filter(d=>d && d.nombre);
+  const respaldoTraeOrdenBalance = divisasEntrantes.length > 0 && divisasEntrantes.every(d=>
+    d.orden_balance !== undefined && d.orden_balance !== null && d.orden_balance !== '' && Number.isFinite(Number(d.orden_balance))
+  );
+  const divisasAImportar = respaldoTraeOrdenBalance
+    ? divisasEntrantes.slice().sort((a,b)=>numFinito(a.orden_balance,0)-numFinito(b.orden_balance,0) || numFinito(a.orden,0)-numFinito(b.orden,0))
+    : divisasEntrantes;
+
+  divisasAImportar.forEach(d=>{
     const local = DB.divisas.find(x=>x.nombre.toLowerCase()===d.nombre.toLowerCase());
     if(!local){
-      DB.divisas.push({id:nextId('divisas'), nombre:d.nombre, simbolo:d.simbolo||'', orden:numFinito(d.orden, DB.divisas.length+1), saldo:numFinito(d.saldo, 0)});
+      const ordenBalanceNuevo = respaldoTraeOrdenBalance
+        ? numFinito(d.orden_balance, DB.divisas.length+1)
+        : (DB.divisas.length ? Math.max(...DB.divisas.map(ordenBalanceDeDivisa)) + 1 : 1);
+      DB.divisas.push({
+        id:nextId('divisas'), nombre:d.nombre, simbolo:d.simbolo||'',
+        orden:numFinito(d.orden, DB.divisas.length+1), orden_balance:ordenBalanceNuevo,
+        saldo:numFinito(d.saldo, 0)
+      });
       insertados++;
     } else {
       if(local.saldo===0 && d.saldo){ local.saldo = numFinito(d.saldo, 0); actualizados++; }
       if((local.orden===undefined || local.orden===null) && d.orden!=null) local.orden = numFinito(d.orden, DB.divisas.length+1);
     }
   });
+
+  // En un respaldo moderno, las divisas incluidas conservan exactamente su orden.
+  // Las divisas locales que no aparecen en el archivo se mantienen al final, en
+  // su orden relativo anterior. Los respaldos antiguos no alteran el orden ya usado.
+  if(respaldoTraeOrdenBalance){
+    const nombresImportados = new Set(divisasAImportar.map(d=>String(d.nombre).toLowerCase()));
+    divisasAImportar.forEach((d,index)=>{
+      const local = DB.divisas.find(x=>x.nombre.toLowerCase()===d.nombre.toLowerCase());
+      if(local) local.orden_balance = index + 1;
+    });
+    const adicionalesLocales = DB.divisas
+      .filter(d=>!nombresImportados.has(String(d.nombre).toLowerCase()))
+      .sort((a,b)=>ordenBalanceDeDivisa(a)-ordenBalanceDeDivisa(b));
+    adicionalesLocales.forEach((d,index)=>{ d.orden_balance = divisasAImportar.length + index + 1; });
+  } else {
+    renumerarOrdenBalance();
+  }
   if(incoming.meta && incoming.meta.nombre_negocio && !DB.meta.nombre_negocio){
     DB.meta.nombre_negocio = String(incoming.meta.nombre_negocio).slice(0,100);
   }

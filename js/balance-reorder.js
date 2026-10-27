@@ -28,6 +28,8 @@ function activarControlReordenamientoBalance(content){
   barra.appendChild(botonReordenar);
 
   let modoReordenar = false;
+  // Solo el botón mantiene el modo abierto después de soltar un arrastre.
+  let modoReordenarPorBoton = false;
   let pulsacionPendiente = null;
   let arrastre = null;
   let clickSuprimidoEn = null;
@@ -262,6 +264,10 @@ function activarControlReordenamientoBalance(content){
     estado.tarjeta.style.pointerEvents = '';
     arrastre = null;
     ordenarBalanceFiltrado();
+    // El long press directo es un gesto completo: al soltar, se acepta el
+    // orden y se vuelve inmediatamente al modo normal. El flujo del botón
+    // permanece activo para permitir varios arrastres y scroll entre ellos.
+    if(!modoReordenarPorBoton) establecerModoReordenar(false);
   }
 
   function alTerminarPunteroArrastre(e){
@@ -316,16 +322,21 @@ function activarControlReordenamientoBalance(content){
     if(evento.cancelable) evento.preventDefault();
   }
 
-  function establecerModoReordenar(activo){
-    if(activo===modoReordenar) return;
+  function establecerModoReordenar(activo, activadoPorBoton=false){
+    if(activo===modoReordenar){
+      // Una segunda petición de activación no reinicia ni duplica el modo.
+      return;
+    }
     if(!activo && arrastre) finalizarArrastre();
     modoReordenar = activo;
+    modoReordenarPorBoton = activo && activadoPorBoton;
     if(activo){
       document.body.classList.add('balance-reordering');
       lista.classList.add('balance-reordering');
-      botonReordenar.textContent = '✅ Listo';
+      botonReordenar.textContent = modoReordenarPorBoton ? '✅ Listo' : '↕️ Reordenar divisas';
       content.addEventListener('pointerdown', alPulsarFuera, true);
     } else {
+      modoReordenarPorBoton = false;
       document.body.classList.remove('balance-reordering');
       lista.classList.remove('balance-reordering');
       botonReordenar.textContent = '↕️ Reordenar divisas';
@@ -344,28 +355,31 @@ function activarControlReordenamientoBalance(content){
 
   function alPulsarTarjeta(e){
     const tarjeta = e.target instanceof Element ? e.target.closest('.bal-card[data-divisa]') : null;
-    if(!tarjeta || !lista.contains(tarjeta) || e.button!==0) return;
-    if(modoReordenar){
-      e.preventDefault();
-      iniciarArrastre(tarjeta,e,tarjeta.getBoundingClientRect());
-      return;
-    }
+    if(!tarjeta || !lista.contains(tarjeta) || e.button!==0 || arrastre) return;
+
+    // En ambos flujos el arrastre requiere long press. Un toque y deslizar
+    // antes de 400 ms queda libre para el scroll natural de la lista/página.
     cancelarPulsacion(false);
     const pendiente = {
       tarjeta:tarjeta,idPuntero:e.pointerId,x:e.clientX,y:e.clientY,
       ultimoX:e.clientX,ultimoY:e.clientY,tipoPuntero:e.pointerType,
+      estabaEnModoBoton:modoReordenarPorBoton,
       temporizador:0
     };
     pulsacionPendiente = pendiente;
     tarjeta.classList.add('longpress-pending');
     pendiente.temporizador = setTimeout(()=>{
-      if(pulsacionPendiente!==pendiente) return;
+      if(pulsacionPendiente!==pendiente || !lista.contains(tarjeta)) return;
       pulsacionPendiente = null;
       tarjeta.classList.remove('longpress-pending');
-      if(!lista.contains(tarjeta)) return;
-      const rect = tarjeta.getBoundingClientRect();
-      establecerModoReordenar(true);
+      clickSuprimidoEn = tarjeta;
+      clickSuprimidoHasta = Date.now() + 700;
+
+      // Si todavía no había modo activo, este es el flujo directo de long
+      // press: se activa solo durante el arrastre y se cierra al soltar.
+      if(!modoReordenar) establecerModoReordenar(true, false);
       try{ if(navigator.vibrate) navigator.vibrate(10); }catch(err){}
+      const rect = tarjeta.getBoundingClientRect();
       iniciarArrastre(tarjeta,{
         pointerId:pendiente.idPuntero,pointerType:pendiente.tipoPuntero,
         clientX:pendiente.ultimoX,clientY:pendiente.ultimoY,cancelable:false,
@@ -426,7 +440,12 @@ function activarControlReordenamientoBalance(content){
   document.addEventListener('click', bloquearClickDeTarjeta, true);
   botonReordenar.addEventListener('click',()=>{
     if(pulsacionPendiente) cancelarPulsacion(false);
-    establecerModoReordenar(!modoReordenar);
+    if(modoReordenar){
+      // En modo botón, el texto visible es "Listo" y el toque confirma la salida.
+      establecerModoReordenar(false);
+      return;
+    }
+    establecerModoReordenar(true, true);
   });
   window.addEventListener('hashchange', alCambiarRuta);
   balanceReorderCleanup = limpiarControl;

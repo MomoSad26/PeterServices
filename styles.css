@@ -486,9 +486,19 @@ label.field-label{display:block;font-size:12.5px;font-weight:700;color:var(--ink
 
 /* ---------- Reordenar divisas del Balance ---------- */
 .bal-actions{
-  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px;
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  align-items:stretch;gap:6px;margin-bottom:12px;
 }
-.bal-actions #b-reorder-divisa{grid-column:1/-1;}
+.bal-actions .btn,
+.bal-actions .btn-block,
+.bal-actions #b-reorder-divisa{
+  box-sizing:border-box;width:100%;min-width:0;max-width:100%;
+  min-height:48px;height:100%;padding:8px 4px;margin:0;
+  display:flex;align-items:center;justify-content:center;
+  text-align:center;white-space:normal;overflow-wrap:anywhere;
+  line-height:1.15;font-size:12px;
+}
 body.balance-reordering #b-add-divisa,
 body.balance-reordering #b-del-divisa,
 body.balance-reordering #b-general .bal-edit,
@@ -497,10 +507,13 @@ body.balance-reordering #b-general .eye-btn{display:none!important;}
   grid-template-columns:minmax(0,1fr);
   max-height:55vh;max-height:calc(100dvh - 260px);
   overflow-y:auto;overscroll-behavior:contain;
-  padding:4px;margin:-4px;touch-action:none;
+  padding:4px;margin:-4px;
+  /* Se permite pan-y hasta que el long press active un arrastre. */
+  touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;
 }
 #b-general.balance-reordering .bal-card{
-  cursor:grab;touch-action:none;
+  cursor:grab;touch-action:pan-y;
   transition:transform .18s ease,box-shadow .18s ease,opacity .18s ease;
 }
 #b-general .bal-card.longpress-pending{transform:scale(.99);transition:transform .4s ease;}
@@ -515,5 +528,10 @@ body.balance-reordering #b-general .eye-btn{display:none!important;}
   cursor:grabbing!important;pointer-events:none!important;
 }
 @media (max-width:360px){
-  .bal-actions .btn{font-size:12px;padding-left:7px;padding-right:7px;}
+  .bal-actions{gap:4px;}
+  .bal-actions .btn,
+  .bal-actions .btn-block,
+  .bal-actions #b-reorder-divisa{
+    font-size:10.5px;padding:7px 2px;letter-spacing:-.15px;
+  }
 }

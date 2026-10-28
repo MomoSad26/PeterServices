@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ "main", "claude/admiring-babbage-xr5y97" ]
-    paths-ignore: [ "**.md" ]
+    paths-ignore: [ "**.md", ".github/workflows/**" ]
 
 permissions:
   contents: write
@@ -39,11 +39,13 @@ jobs:
           gradle assembleRelease --stacktrace
           cp app/build/outputs/apk/release/app-release.apk Remesas.apk
 
-      - name: Upload APK
+      - name: Upload APK (copia temporal; no bloquea la publicación)
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: Remesas-apk
           path: android/Remesas.apk
+          retention-days: 1
 
       # Solo desde main: publica la APK con un enlace fijo
       # (releases/latest/download/Remesas.apk) para instalarla en el teléfono.

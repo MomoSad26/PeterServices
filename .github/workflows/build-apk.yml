@@ -1,16 +1,8 @@
 name: Build APK
 
+# La APK solo se compila y publica mediante ejecución manual autorizada.
 on:
   workflow_dispatch:
-  push:
-    branches: [ "main", "claude/admiring-babbage-xr5y97" ]
-    # La documentación y las instrucciones de agentes no deben generar APK.
-    paths-ignore:
-      - "**.md"
-      - "**.mdc"
-      - ".cursor/**"
-      - ".github/instructions/**"
-      - ".github/workflows/**"
 
 permissions:
   contents: write

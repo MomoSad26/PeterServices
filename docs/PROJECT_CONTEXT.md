@@ -45,8 +45,8 @@ No regeneres, reemplaces, muevas ni cambies el alias/contraseña de la clave de 
 - Ejecuta en Ubuntu, configura JDK 17 y Gradle 8.14.3, copia la web con `android/sync-web.sh`, ejecuta `gradle assembleRelease` y publica `Remesas.apk` en GitHub Releases.
 - La publicación usa tags `v1.0.N`; Gradle deriva el número de versión de `GITHUB_RUN_NUMBER`. No fijes manualmente un número que pueda retroceder ni alteres el cálculo sin revisar también el sistema de detección de actualizaciones.
 - La APK más reciente se descarga con el enlace estable: `https://github.com/MomoSad26/PeterServices/releases/latest/download/Remesas.apk`.
-- El workflow se dispara con push a `main` o a la rama configurada en el YAML; actualmente excluye documentación (`**.md`, `**.mdc`), reglas de Cursor (`.cursor/**`), instrucciones por ruta de Copilot (`.github/instructions/**`) y cambios bajo `.github/workflows/**` mediante `paths-ignore`. Un cambio solo documental no debe compilar la APK. Los cambios del propio workflow requieren ejecución manual si el filtro los excluye.
-- La copia temporal de Actions tiene `retention-days: 1` y `continue-on-error: true`; su fallo no debe impedir llegar al paso de publicación de Releases. No confundir artefactos temporales de Actions con el asset de APK de GitHub Releases.
+- El workflow tiene exclusivamente el disparador `workflow_dispatch`: ningún push, pull request, horario u otro evento debe compilar la APK. Los commits y actualizaciones del repositorio pueden ejecutarse normalmente sin generar APK ni gastar cuota de artefactos. Solo ejecutar el workflow manualmente cuando la persona usuaria autorice expresamente una compilación/publicación.
+- La copia temporal de Actions tiene `retention-days: 1` y `continue-on-error: true`; solo se crea cuando la persona usuaria autoriza una compilación manual. No confundir artefactos temporales de Actions con el asset de APK de GitHub Releases.
 - Compilación local indicada por el proyecto: desde `android/`, ejecutar `./sync-web.sh && gradle assembleRelease`.
 
 ## Instrucciones para agentes de IA

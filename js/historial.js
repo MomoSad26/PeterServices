@@ -216,7 +216,7 @@ function renderEnvioDetalle(content, id){
         }
         DB.envios = DB.envios.filter(x=>x.id!==e.id);
         save();
-      }, 5000);
+      });
       // Al eliminar desde el detalle se crea una nueva entrada de historial:
       // Atrás puede volver al detalle antiguo, que mostrará "Envío no encontrado".
       // La ruta de historial restaura el scroll guardado al abrir este detalle.

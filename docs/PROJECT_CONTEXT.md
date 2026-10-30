@@ -49,6 +49,14 @@ No regeneres, reemplaces, muevas ni cambies el alias/contraseña de la clave de 
 - La copia temporal de Actions tiene `retention-days: 1` y `continue-on-error: true`; su fallo no debe impedir llegar al paso de publicación de Releases. No confundir artefactos temporales de Actions con el asset de APK de GitHub Releases.
 - Compilación local indicada por el proyecto: desde `android/`, ejecutar `./sync-web.sh && gradle assembleRelease`.
 
+## Instrucciones para agentes de IA
+
+- Fuente común: `AGENTS.md`. Codex la reconoce directamente; Cursor también admite `AGENTS.md`; Claude Code tiene `CLAUDE.md` como entrada que importa el documento común.
+- GitHub Copilot usa `.github/copilot-instructions.md` y puede aplicar instrucciones específicas desde `.github/instructions/`.
+- Las reglas de Cursor por ruta están en `.cursor/rules/*.mdc`.
+- ChatGPT con herramientas/conector GitHub no tiene un mecanismo universal que garantice la carga automática de instrucciones del repositorio. En este proyecto debe recuperar primero `AGENTS.md`, luego `PROJECT_MAP.md` y `docs/DEPENDENCY_MAP.md`, y leer los archivos de código pertinentes. No afirmar que la memoria se cargó automáticamente si no se verificó.
+- Procedimiento recomendado: área en `PROJECT_MAP.md` → relaciones en `docs/DEPENDENCY_MAP.md` → solo archivos objetivo y dependencias necesarias → comprobaciones del impacto → actualizar documentación si cambió una decisión duradera.
+
 ## Seguridad y alcance de cambios
 
 - El repositorio debe permanecer privado mientras contenga el keystore y configuración sensible.

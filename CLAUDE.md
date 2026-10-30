@@ -1,5 +1,5 @@
 # Claude Code project instructions
 
-@AGENTS.md
+Lee y sigue `@AGENTS.md` y `docs/INVARIANTS.md` antes de trabajar.
 
-Use `AGENTS.md` as the single source of truth for repository-wide rules. Before editing, follow its required-start procedure and consult `PROJECT_MAP.md` plus the relevant sections of `docs/DEPENDENCY_MAP.md` and `docs/PROJECT_CONTEXT.md`. Keep this file as a short compatibility entrypoint; do not duplicate the project manual here.
+`AGENTS.md` es la fuente común de procedimiento; `docs/INVARIANTS.md` contiene las reglas no negociables. Después consulta `PROJECT_MAP.md`, `docs/DEPENDENCY_MAP.md` y el contexto pertinente. No dupliques aquí el manual del proyecto.

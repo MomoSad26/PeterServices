@@ -26,7 +26,8 @@ Este documento conserva hitos útiles para futuras sesiones; no sustituye el his
 - Al confirmar la eliminación desde `renderEnvioDetalle`, se vuelve a la lista normal de Historial mediante una nueva entrada de ruta; el scroll se restaura con `scrollMemory` del router.
 - El toast de Deshacer permanece 5 segundos en este flujo. El helper compartido vuelve a 2 segundos por defecto para las demás eliminaciones.
 - La instantánea anterior a la eliminación restaura el envío, la deuda asociada (incluido su estado original) y todos los saldos. El botón sigue funcionando aunque se navegue a otro menú; otra eliminación reemplaza el deshacer pendiente.
-- Archivos: `js/historial.js`, `js/utilidades.js`. No se cambió el modelo persistido ni el flujo de compilación.
+- Archivos: `js/historial.js`, `js/utilidades.js`. No se cambió el modelo persistido ni la configuración del flujo de compilación.
+- Nota de CI: los dos archivos JavaScript se guardaron en commits separados y cada push activó Actions automáticamente, pese a que no se solicitó compilar. Las ejecuciones 27 y 28 terminaron correctamente y publicaron `v1.0.127` y `v1.0.128`. Para futuros cambios relacionados, agrupar los archivos de código en un único commit evita ejecuciones duplicadas.
 
 ## Hitos funcionales confirmados
 

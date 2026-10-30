@@ -9,6 +9,14 @@ Este documento conserva hitos útiles para futuras sesiones; no sustituye el his
 - Último cambio funcional verificado: commit `5f96f2d` (27-10-2026), ajuste del gesto y controles para reordenar divisas en Balance.
 - Commit posterior de configuración CI: `adcb0ec` (28-10-2026), tolerancia al fallo de la subida temporal de artefactos y retención de un día. No fue una compilación de la app.
 
+## Preparación multiagente — 29-10-2026
+
+- Se estableció `AGENTS.md` como fuente común de instrucciones para agentes compatibles.
+- Se añadieron entradas específicas para Claude Code (`CLAUDE.md`), GitHub Copilot (`.github/copilot-instructions.md` y reglas por ruta) y Cursor (`.cursor/rules/`).
+- Se creó `docs/DEPENDENCY_MAP.md` para identificar los módulos relacionados y los efectos colaterales antes de editar.
+- Codex/Cursor/Claude pueden leer sus archivos compatibles. Para ChatGPT con conector GitHub, el procedimiento indicado es recuperar expresamente el contexto; no hay garantía universal de inyección automática.
+- La tarea fue exclusivamente documental; no se modificó la app ni se generó APK.
+
 ## Hitos funcionales confirmados
 
 - **27-10-2026 — Balance:** se añadió reordenamiento táctil de divisas; después se ajustaron los controles y el gesto de pulsación larga de 400 ms. La versión publicada tras esos cambios fue `v1.0.124`.

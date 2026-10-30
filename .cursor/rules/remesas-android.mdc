@@ -1,0 +1,7 @@
+---
+description: "Android WebView, APK signing, versioning and GitHub Actions release safety"
+globs: "android/**"
+alwaysApply: false
+---
+
+Follow root `AGENTS.md` and `docs/PROJECT_CONTEXT.md`. Preserve `applicationId`, the existing signing keystore and version-code progression. Never print, replace or regenerate signing material. The web source is at the repository root and is copied by `android/sync-web.sh`; generated assets under Android are not the source of truth. Check `.github/workflows/build-apk.yml`, `MainActivity.java`, the manifest and the app's release-update check when relevant. Do not build or publish unless requested.

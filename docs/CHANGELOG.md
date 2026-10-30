@@ -17,6 +17,10 @@ Este documento conserva hitos útiles para futuras sesiones; no sustituye el his
 - Codex/Cursor/Claude pueden leer sus archivos compatibles. Para ChatGPT con conector GitHub, el procedimiento indicado es recuperar expresamente el contexto; no hay garantía universal de inyección automática.
 - Se amplió `paths-ignore` del workflow para que los archivos de instrucciones y mapas de IA (`.md`, `.mdc`, `.cursor/**`, `.github/instructions/**`) no generen compilaciones. No se modificó la app ni se generó APK.
 
+## Nota de automatización
+
+- La primera subida de dos reglas Cursor `.mdc` ocurrió antes de ampliar el filtro y disparó automáticamente las ejecuciones 25 y 26, que publicaron `v1.0.125` y `v1.0.126`. No hubo cambios funcionales en la app. El filtro ampliado quedó guardado después para evitar que los próximos cambios de instrucciones generen APK.
+
 ## Hitos funcionales confirmados
 
 - **27-10-2026 — Balance:** se añadió reordenamiento táctil de divisas; después se ajustaron los controles y el gesto de pulsación larga de 400 ms. La versión publicada tras esos cambios fue `v1.0.124`.

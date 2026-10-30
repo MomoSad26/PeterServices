@@ -1,0 +1,3 @@
+# GitHub Copilot instructions
+
+Read the root `AGENTS.md` first; it is the shared source of truth for architecture, safety rules and the task workflow. Then use `PROJECT_MAP.md` to select files and `docs/DEPENDENCY_MAP.md` to identify related modules before editing. Read only the target files and dependencies that apply; do not scan the repository by default. Preserve local-data compatibility, classic-script load order, service-worker cache coverage, Android package identity and signing key. Update durable technical documentation after meaningful changes. Do not build or publish an APK unless the user requests it.

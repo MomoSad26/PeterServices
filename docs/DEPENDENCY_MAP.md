@@ -29,7 +29,8 @@ Este mapa responde a dos preguntas: dónde empieza un cambio y qué otras áreas
 | Deudas | `js/deudas.js` | registros de origen (envíos/ventas y otros), balance-base, trabajadores/mensajeros, WhatsApp, respaldos |
 | Balance y divisas | `js/balance.js`, `js/balance-base.js` | módulos que registran operaciones, modelo, `js/balance-reorder.js`, panel e historial |
 | Historial y archivo | `js/historial.js`, `js/archivo.js` | envíos y operaciones, deudas, búsqueda, paginación, balance |
-| Eliminar envío desde detalle | `js/historial.js` + `eliminarConDeshacer()` en `js/utilidades.js` | `js/balance-base.js`, `js/deudas.js`, historial/scroll del router | la instantánea restaura el envío, saldos y deuda; duración 5 s solo en este flujo |
+| Eliminaciones con Deshacer (todos los menús) | `eliminarConDeshacer()` y `mostrarToastDeshacer()` en `js/utilidades.js`; llamadores en clientes, trabajadores, envíos, entregas, deudas y movimientos | cada módulo de origen y sus efectos de balance/deudas/historial | duración común de 5 s; la instantánea devuelve el estado completo previo a la eliminación |
+| Eliminar envío desde detalle | `js/historial.js` | `js/balance-base.js`, `js/deudas.js`, historial/scroll del router | vuelve al Historial y conserva el scroll; usa el Deshacer global de 5 s |
 | Panel Hoy/Ayer | `js/panel.js` | campos/fechas de operaciones, divisas, balance; debe seguir siendo de consulta |
 | Búsqueda global | `js/busqueda.js` | listados y rutas de clientes, trabajadores, envíos, ventas, compras, gastos y deudas |
 | Respaldos | `js/respaldos.js` | todo el esquema de `js/db.js`, claves/versiones de formato y `js/xlsx.js` si afecta a Excel |

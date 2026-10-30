@@ -1,6 +1,18 @@
 # Mapa del proyecto Remesas
 
-Índice de navegación. Lee primero la sección correspondiente; no abras todos los archivos por defecto.
+Índice de navegación. Lee la sección pertinente; no abras todos los archivos por defecto. El mapa de relaciones entre módulos está en `docs/DEPENDENCY_MAP.md`.
+
+## Archivos de orientación para IA
+
+- `AGENTS.md`: instrucciones comunes, invariantes y procedimiento de trabajo. Primera lectura para Codex, Cursor y agentes compatibles.
+- `CLAUDE.md`: entrada de Claude Code que importa `AGENTS.md`.
+- `.github/copilot-instructions.md`: instrucciones generales de GitHub Copilot.
+- `.github/instructions/`: indicaciones Copilot específicas por tipo de archivo.
+- `.cursor/rules/`: indicaciones Cursor específicas por ruta.
+- `docs/PROJECT_CONTEXT.md`: contexto técnico duradero.
+- `docs/DEPENDENCY_MAP.md`: relaciones y efectos colaterales entre áreas.
+- `docs/CHANGELOG.md`: hitos y decisiones históricas resumidas.
+- ChatGPT con acceso GitHub debe leer `AGENTS.md` explícitamente; el conector no garantiza que el archivo se inyecte por sí solo.
 
 ## Entradas y estructura
 
@@ -51,4 +63,4 @@ Las rutas de menú se declaran en `index.html` y se resuelven en `js/router.js`:
 - `android/sync-web.sh`: copia la web raíz a los assets incluidos en la APK.
 - `.github/workflows/build-apk.yml`: JDK/Gradle, construcción y GitHub Release.
 
-Para reglas de compatibilidad, datos, firma y publicación, consulta `docs/PROJECT_CONTEXT.md`.
+Para relaciones cruzadas, consulta `docs/DEPENDENCY_MAP.md`. Para reglas de compatibilidad, datos, firma y publicación, consulta `docs/PROJECT_CONTEXT.md`.

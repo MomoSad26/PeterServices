@@ -15,7 +15,7 @@ Este documento conserva hitos útiles para futuras sesiones; no sustituye el his
 - Se añadieron entradas específicas para Claude Code (`CLAUDE.md`), GitHub Copilot (`.github/copilot-instructions.md` y reglas por ruta) y Cursor (`.cursor/rules/`).
 - Se creó `docs/DEPENDENCY_MAP.md` para identificar los módulos relacionados y los efectos colaterales antes de editar.
 - Codex/Cursor/Claude pueden leer sus archivos compatibles. Para ChatGPT con conector GitHub, el procedimiento indicado es recuperar expresamente el contexto; no hay garantía universal de inyección automática.
-- La tarea fue exclusivamente documental; no se modificó la app ni se generó APK.
+- Se amplió `paths-ignore` del workflow para que los archivos de instrucciones y mapas de IA (`.md`, `.mdc`, `.cursor/**`, `.github/instructions/**`) no generen compilaciones. No se modificó la app ni se generó APK.
 
 ## Hitos funcionales confirmados
 

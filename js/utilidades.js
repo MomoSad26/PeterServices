@@ -113,7 +113,7 @@ function toast(msg){
    EXACTAMENTE el registro, los saldos de todas las divisas y la deuda
    asociada (si la había), sin tener que repetir la lógica de balance de
    cada tipo de registro. Solo se puede deshacer la última eliminación. */
-const DESHACER_MS = 2000; // Duración predeterminada; algunos flujos pueden ampliarla.
+const DESHACER_MS = 5000; // Duración uniforme para todas las eliminaciones.
 let deshacerPendiente = null; // {snapshot, cambiosTrasEliminar, timer}
 
 function cancelarDeshacerPendiente(){
@@ -148,7 +148,7 @@ function mostrarToastDeshacer(mensaje, onDeshacer, duracionMs=DESHACER_MS){
 }
 
 /* Ejecuta una eliminación (que debe incluir su propio save()) y ofrece
-   deshacerla durante la duración indicada (2 segundos por defecto). */
+   deshacerla durante la duración indicada (5 segundos por defecto). */
 function eliminarConDeshacer(mensaje, eliminar, duracionMs=DESHACER_MS){
   const snapshot = JSON.parse(JSON.stringify(DB));
   eliminar();

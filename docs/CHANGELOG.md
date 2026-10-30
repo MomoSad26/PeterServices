@@ -21,6 +21,13 @@ Este documento conserva hitos útiles para futuras sesiones; no sustituye el his
 
 - La primera subida de dos reglas Cursor `.mdc` ocurrió antes de ampliar el filtro y disparó automáticamente las ejecuciones 25 y 26, que publicaron `v1.0.125` y `v1.0.126`. No hubo cambios funcionales en la app. El filtro ampliado quedó guardado después para evitar que los próximos cambios de instrucciones generen APK.
 
+## 29-10-2026 — Eliminar envío desde el detalle
+
+- Al confirmar la eliminación desde `renderEnvioDetalle`, se vuelve a la lista normal de Historial mediante una nueva entrada de ruta; el scroll se restaura con `scrollMemory` del router.
+- El toast de Deshacer permanece 5 segundos en este flujo. El helper compartido vuelve a 2 segundos por defecto para las demás eliminaciones.
+- La instantánea anterior a la eliminación restaura el envío, la deuda asociada (incluido su estado original) y todos los saldos. El botón sigue funcionando aunque se navegue a otro menú; otra eliminación reemplaza el deshacer pendiente.
+- Archivos: `js/historial.js`, `js/utilidades.js`. No se cambió el modelo persistido ni el flujo de compilación.
+
 ## Hitos funcionales confirmados
 
 - **27-10-2026 — Balance:** se añadió reordenamiento táctil de divisas; después se ajustaron los controles y el gesto de pulsación larga de 400 ms. La versión publicada tras esos cambios fue `v1.0.124`.

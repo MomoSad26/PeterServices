@@ -14,7 +14,7 @@ Remesas es una app local/offline de gestión de remesas: web estática en JavaSc
 - Operaciones pueden afectar saldos, deudas, historial, búsqueda, panel y respaldos. Sigue `docs/DEPENDENCY_MAP.md` y comprueba los efectos secundarios.
 - Conserva `applicationId` Android y la clave de firma existente. Nunca reveles, sustituyas o regeneres keystore, contraseñas ni claves de respaldo.
 - Mantén `Ajustes` como último menú. No cambies decisiones de navegación/actualización sin revisar su contexto.
-- No compiles ni publiques APK si el usuario no lo pidió. Los cambios solo documentales no deben disparar compilación.
+- No compiles ni publiques APK si el usuario no lo pidió. `.github/workflows/build-apk.yml` debe conservar exclusivamente `workflow_dispatch`: nunca agregues `push`, `pull_request`, `schedule` ni otros disparadores automáticos sin autorización expresa. Un commit/push de código por sí solo no debe consumir cuota compilando APK.
 
 ## Al terminar
 Revisa diff y referencias afectadas; actualiza mapas/contexto/changelog solo cuando la arquitectura, una dependencia o una decisión duradera cambie. Resume archivos modificados, impactos y comprobaciones realizadas.

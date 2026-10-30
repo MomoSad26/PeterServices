@@ -24,10 +24,17 @@ Este documento conserva hitos útiles para futuras sesiones; no sustituye el his
 ## 29-10-2026 — Eliminar envío desde el detalle
 
 - Al confirmar la eliminación desde `renderEnvioDetalle`, se vuelve a la lista normal de Historial mediante una nueva entrada de ruta; el scroll se restaura con `scrollMemory` del router.
-- El toast de Deshacer permanece 5 segundos en este flujo. El helper compartido vuelve a 2 segundos por defecto para las demás eliminaciones.
+- El toast de Deshacer se estableció en 5 segundos para todas las eliminaciones que usan el helper compartido, en cualquier menú.
 - La instantánea anterior a la eliminación restaura el envío, la deuda asociada (incluido su estado original) y todos los saldos. El botón sigue funcionando aunque se navegue a otro menú; otra eliminación reemplaza el deshacer pendiente.
 - Archivos: `js/historial.js`, `js/utilidades.js`. No se cambió el modelo persistido ni la configuración del flujo de compilación.
 - Nota de CI: los dos archivos JavaScript se guardaron en commits separados y cada push activó Actions automáticamente, pese a que no se solicitó compilar. Las ejecuciones 27 y 28 terminaron correctamente y publicaron `v1.0.127` y `v1.0.128`. Para futuros cambios relacionados, agrupar los archivos de código en un único commit evita ejecuciones duplicadas.
+
+## 29-10-2026 — Deshacer global y compilación APK bajo autorización
+
+- Todas las eliminaciones que utilizan `eliminarConDeshacer()` muestran el toast durante 5 segundos. El detalle del envío usa el mismo valor predeterminado; ya no necesita una excepción.
+- El workflow `.github/workflows/build-apk.yml` quedó únicamente con `workflow_dispatch`. Los pushes/commits ya no disparan compilaciones ni publicaciones de APK.
+- La APK solo se compila/publica cuando la persona usuaria lo solicita expresamente y se lanza el workflow manualmente. El artefacto temporal conserva retención de un día.
+- Archivos principales: `js/utilidades.js`, `js/historial.js`, `.github/workflows/build-apk.yml` y documentación de contexto/dependencias.
 
 ## Hitos funcionales confirmados
 

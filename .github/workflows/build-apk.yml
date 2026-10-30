@@ -4,7 +4,13 @@ on:
   workflow_dispatch:
   push:
     branches: [ "main", "claude/admiring-babbage-xr5y97" ]
-    paths-ignore: [ "**.md", ".github/workflows/**" ]
+    # La documentación y las instrucciones de agentes no deben generar APK.
+    paths-ignore:
+      - "**.md"
+      - "**.mdc"
+      - ".cursor/**"
+      - ".github/instructions/**"
+      - ".github/workflows/**"
 
 permissions:
   contents: write

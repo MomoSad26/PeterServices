@@ -113,7 +113,7 @@ function toast(msg){
    EXACTAMENTE el registro, los saldos de todas las divisas y la deuda
    asociada (si la había), sin tener que repetir la lógica de balance de
    cada tipo de registro. Solo se puede deshacer la última eliminación. */
-const DESHACER_MS = 5000;
+const DESHACER_MS = 2000; // Duración predeterminada; algunos flujos pueden ampliarla.
 let deshacerPendiente = null; // {snapshot, cambiosTrasEliminar, timer}
 
 function cancelarDeshacerPendiente(){
@@ -122,7 +122,7 @@ function cancelarDeshacerPendiente(){
   deshacerPendiente = null;
 }
 
-function mostrarToastDeshacer(mensaje, onDeshacer){
+function mostrarToastDeshacer(mensaje, onDeshacer, duracionMs=DESHACER_MS){
   const el = document.getElementById('toast');
   cancelarDeshacerPendiente();
   clearTimeout(toast._t);
@@ -137,16 +137,19 @@ function mostrarToastDeshacer(mensaje, onDeshacer){
     el.classList.remove('show');
     onDeshacer();
   };
+  const duracion = Number.isFinite(Number(duracionMs))
+    ? Math.max(0, Number(duracionMs))
+    : DESHACER_MS;
   estado.timer = setTimeout(()=>{
     if(deshacerPendiente !== estado) return;
     deshacerPendiente = null;
     el.classList.remove('show');
-  }, DESHACER_MS);
+  }, duracion);
 }
 
 /* Ejecuta una eliminación (que debe incluir su propio save()) y ofrece
-   deshacerla durante unos segundos. */
-function eliminarConDeshacer(mensaje, eliminar){
+   deshacerla durante la duración indicada (2 segundos por defecto). */
+function eliminarConDeshacer(mensaje, eliminar, duracionMs=DESHACER_MS){
   const snapshot = JSON.parse(JSON.stringify(DB));
   eliminar();
   const cambiosTrasEliminar = contadorCambios;
@@ -159,7 +162,7 @@ function eliminarConDeshacer(mensaje, eliminar){
     save();
     route();
     toast('Eliminación deshecha');
-  });
+  }, duracionMs);
 }
 
 function todayRangeStart(){

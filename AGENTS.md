@@ -1,11 +1,10 @@
-# Instrucciones para agentes
+# Agent instructions
 
-1. Empieza por `PROJECT_MAP.md`; identifica el módulo de la tarea y lee solo ese módulo y sus dependencias directas.
-2. Consulta `docs/PROJECT_CONTEXT.md` únicamente para las reglas de arquitectura, datos o publicación que afecten al cambio. Consulta `docs/CHANGELOG.md` para conocer la línea base reciente.
-3. No recorras ni leas todo el repositorio por defecto. El código actual es la fuente de verdad: verifica en él cualquier detalle que pueda haber cambiado.
-4. JavaScript usa scripts clásicos con ámbito global y orden de carga en `index.html`. No conviertas a módulos ni cambies ese orden sin una migración explícita.
-5. Si agregas un archivo JavaScript, inclúyelo en el orden correcto de `index.html` y en la lista de precarga de `sw.js`; revisa también la versión de caché.
-6. Preserva los datos locales y la compatibilidad del esquema. No reinicies, reemplaces ni migres datos sin un plan compatible y explícito.
-7. Para Android, conserva `applicationId` y la clave de firma existente. Nunca expongas, regeneres ni sustituyas el keystore o credenciales como parte de un cambio rutinario.
-8. Actualiza el mapa o el contexto solo cuando cambie arquitectura, comportamiento importante o flujo de publicación. Registra las decisiones relevantes en `docs/CHANGELOG.md`.
-9. No compiles ni publiques una APK cuando la usuaria indique que no hace falta. Antes de terminar, revisa el diff y resume archivos y efectos del cambio.
+- Start with `PROJECT_MAP.md`; read only the task's module and direct dependencies.
+- Consult relevant sections of `docs/PROJECT_CONTEXT.md`; use `docs/CHANGELOG.md` for recent decisions.
+- Avoid full-repo scans. Code is authoritative; verify details that may have changed.
+- JS uses ordered classic scripts/global scope. New JS files must be added to `index.html` and `sw.js`; review the SW cache version.
+- Preserve local data/schema compatibility. Never reset or migrate user data without an explicit safe plan.
+- Preserve Android `applicationId` and signing key. Never expose, replace or regenerate the keystore/credentials.
+- Update docs for durable behavior/architecture changes. Do not build or publish when the user says not to.
+- Review the diff and summarize changed files and effects before finishing.

@@ -2,8 +2,8 @@
 (function instalarControlesDeFecha(){
   const selectorFecha = 'input[type="date"], input[type="datetime-local"]';
   const dos = n => String(n).padStart(2,'0');
-  const fechaLocalTexto = d => \`\${d.getFullYear()}-\${dos(d.getMonth()+1)}-\${dos(d.getDate())}\`;
-  const horaLocalTexto = d => \`\${dos(d.getHours())}:\${dos(d.getMinutes())}\`;
+  const fechaLocalTexto = d => d.getFullYear() + '-' + dos(d.getMonth()+1) + '-' + dos(d.getDate());
+  const horaLocalTexto = d => dos(d.getHours()) + ':' + dos(d.getMinutes());
 
   function emitirCambio(input){
     input.dispatchEvent(new Event('input', {bubbles:true}));
@@ -13,7 +13,7 @@
   function moverDia(input, dias){
     const valorOriginal = input.value;
     if(input.type === 'date'){
-      const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(valorOriginal);
+      const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(valorOriginal);
       const fecha = m
         ? new Date(Number(m[1]), Number(m[2])-1, Number(m[3]))
         : new Date();
@@ -30,7 +30,7 @@
         ? valorOriginal.slice(separador+1)
         : horaLocalTexto(fecha);
       fecha.setDate(fecha.getDate() + dias);
-      input.value = \`\${fechaLocalTexto(fecha)}T\${hora}\`;
+      input.value = fechaLocalTexto(fecha) + 'T' + hora;
     }
     emitirCambio(input);
   }

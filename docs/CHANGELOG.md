@@ -9,6 +9,15 @@ Este documento conserva hitos útiles para futuras sesiones; no sustituye el his
 - Último cambio funcional verificado: commit `5f96f2d` (27-10-2026), ajuste del gesto y controles para reordenar divisas en Balance.
 - Commit posterior de configuración CI: `e1951c7` (29-10-2026). El workflow conserva únicamente `workflow_dispatch`.
 
+## 2026-10-30 — Adelantar un día en todos los campos de fecha
+
+- Se añadió el botón `▶` a la derecha de cada campo `date` y `datetime-local`, manteniendo `◀` a la izquierda.
+- El controlador universal también cubre campos insertados dinámicamente, como formularios y filtros personalizados de Historial y Balance.
+- Ambos sentidos usan `Date.setDate()` en calendario local, sin sumar milisegundos; `datetime-local` conserva la hora y los botones notifican mediante eventos `input` y `change`.
+- Los campos vacíos parten de la fecha/hora local actual; no se aplican límites para avanzar ni retroceder.
+- Se actualizó el estilo táctil común y la caché PWA a `remesas-v27`.
+- Archivos: `js/fecha-previa.js`, `styles.css`, `sw.js` y mapas/contexto de documentación.
+
 ## 2026-10-29 — Mejora de documentación y guía de validación
 
 - Se añadió un README principal en la raíz con descripción del producto, ejecución local, descarga de APK, conservación de datos y enlaces a la documentación.

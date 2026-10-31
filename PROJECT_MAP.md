@@ -1,6 +1,6 @@
 # Mapa del proyecto Remesas
 
-Última actualización: 2026-10-29
+Última actualización: 2026-10-30
 
 Índice de navegación. Lee la sección pertinente; no abras todos los archivos por defecto. Las reglas obligatorias están en `docs/INVARIANTS.md` y las relaciones entre módulos en `docs/DEPENDENCY_MAP.md`.
 
@@ -48,7 +48,7 @@ El impacto indica la consecuencia típica de una regresión, no una prioridad pa
 | Respaldo y exportación | `js/respaldos.js`, `js/xlsx.js` | cambien importación, exportación, cifrado o Excel | Crítico: recuperación y portabilidad de datos |
 | Panel | `js/panel.js` | cambie el resumen operativo Hoy/Ayer | Medio: consistencia de indicadores |
 | Búsqueda | `js/busqueda.js` | cambie el buscador global | Medio: acceso a registros |
-| Fechas | `js/fecha-previa.js` | cambie control universal para retroceder fechas | Medio: fecha de imputación |
+| Fechas | `js/fecha-previa.js` | cambien los controles universales para retroceder/adelantar un día | Medio: fecha de imputación |
 | Apariencia | `js/ajustes.js`, `prefs.js` | cambien ajustes, modo oscuro o color principal | Bajo/medio: presentación y preferencias |
 
 ## Orden de carga

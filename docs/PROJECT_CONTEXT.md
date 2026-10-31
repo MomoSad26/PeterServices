@@ -1,6 +1,6 @@
 # Contexto técnico del proyecto Remesas
 
-Última actualización: 2026-10-29
+Última actualización: 2026-10-30
 
 ## Producto y arquitectura
 
@@ -18,6 +18,7 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 - Las preferencias visuales se guardan aparte mediante `prefs.js` y no forman parte del respaldo general.
 - Envíos, ventas, compras, gastos e In/Out pueden afectar saldos y deudas; sus cambios se reflejan también en historial, panel y búsqueda.
 - Los registros archivados se mantienen para cálculos y relaciones.
+- `js/fecha-previa.js` añade controles ◀/▶ de día a todos los campos editables `date` y `datetime-local`, incluidos los que aparecen dinámicamente en formularios y filtros. Emite eventos `input` y `change`; `datetime-local` conserva su hora y usa aritmética de calendario local.
 - La navegación se define en `index.html` y `js/router.js`; Ajustes permanece como último menú.
 - Los respaldos manuales/automáticos se gestionan en `js/respaldos.js`. Preserva compatibilidad con los formatos antiguos y no expongas las claves heredadas de respaldo.
 

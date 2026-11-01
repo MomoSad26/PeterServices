@@ -90,17 +90,35 @@ function ventaEstado(v){
   return 'Pendiente de cobro';
 }
 function ventaRowHtml(v){
+  const comprador=nombreCompradorDeVenta(v);
   return `
     <div class="list-item" data-id="${v.id}">
       <div class="avatar">💱</div>
       <div class="li-main">
-        <div class="li-title">${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}</div>
+        <div class="li-title">${comprador?`${escapeHtml(comprador)} · `:''}${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}</div>
         <div class="li-sub">${fmtDate(v.fecha_hora)} · ${ventaEstado(v)}</div>
       </div>
       <button class="icon-action-btn edit-btn" data-id="${v.id}" aria-label="Editar venta">✏️</button>
     </div>`;
 }
+function ventaCompradorSnapshot(comprador){
+  if(!comprador) return {comprador_id:null,comprador_nombre:'',comprador_nombre_completo:'',comprador_telefono:'',comprador_direccion:''};
+  return {
+    comprador_id:comprador.id??comprador.comprador_id??null,
+    comprador_nombre:comprador.nombre??comprador.comprador_nombre??'',
+    comprador_nombre_completo:comprador.nombre_completo??comprador.comprador_nombre_completo??'',
+    comprador_telefono:comprador.telefono??comprador.comprador_telefono??'',
+    comprador_direccion:comprador.direccion??comprador.comprador_direccion??''
+  };
+}
+function ventaCompradorCampoHtml(prefijo, comprador){
+  return `<div style="display:flex;gap:8px;align-items:center;">
+    <button type="button" class="picker" style="flex:1;display:flex;justify-content:space-between;align-items:center;" id="${prefijo}-comprador-picker"><span>${escapeHtml(comprador?.nombre||'Seleccionar comprador')}</span><span>🔍</span></button>
+    ${comprador?`<button type="button" class="btn btn-outline" id="${prefijo}-comprador-clear">Quitar</button>`:''}
+  </div>`;
+}
 function openVentaForm(onSaved, prefill){
+  let compradorSel=prefill?.comprador_id!=null?(compradorPorId(prefill.comprador_id)||{id:prefill.comprador_id,nombre:prefill.comprador_nombre||'',nombre_completo:prefill.comprador_nombre_completo||'',telefono:prefill.comprador_telefono||'',direccion:prefill.comprador_direccion||''}):null;
   openModal(`
     <div class="modal-title">Registrar venta</div>
     ${prefill ? avisoDuplicadoHtml() : ''}
@@ -118,6 +136,8 @@ function openVentaForm(onSaved, prefill){
       <div class="pill" data-v="1">Sí</div>
     </div>
     <div class="hint">Si activa esta opción, la cantidad recibida NO se suma ahora al balance — se crea un registro pendiente en Deudas → Me deben.</div>
+    <label class="field-label">Comprador (opcional)</label>
+    <div id="vf-comprador-wrap">${ventaCompradorCampoHtml('vf',compradorSel)}</div>
     <label class="field-label">Fecha y hora de la venta *</label>
     <input type="datetime-local" id="vf-fecha" value="${toLocalDatetimeValue(Date.now())}">
     <div class="hint">Por defecto es la fecha y hora actual. Puede ajustarla.</div>
@@ -135,6 +155,14 @@ function openVentaForm(onSaved, prefill){
   }
   bindAddOnSelect(document.getElementById('vf-dvendida'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(document.getElementById('vf-drecibida'), addDivisa, divisaOptionsHtml);
+  function renderComprador(){
+    const wrap=document.getElementById('vf-comprador-wrap'); if(!wrap)return;
+    wrap.innerHTML=ventaCompradorCampoHtml('vf',compradorSel);
+    document.getElementById('vf-comprador-picker').onclick=()=>openSelectorComprador(c=>{compradorSel=c;renderComprador();});
+    const clear=document.getElementById('vf-comprador-clear');
+    if(clear) clear.onclick=()=>{compradorSel=null;renderComprador();};
+  }
+  renderComprador();
   let registraDeuda = prefill && prefill.registra_deuda ? 1 : 0;
   document.querySelectorAll('#vf-switch .pill').forEach(p=>{
     p.onclick = ()=>{
@@ -155,14 +183,15 @@ function openVentaForm(onSaved, prefill){
       toast('Todos los campos obligatorios deben estar llenos.'); return;
     }
     const fecha_hora = new Date(fechaVal).getTime();
-    const venta = {id:nextId('ventas'), cantidad_vendida, divisa_vendida, cantidad_recibida, divisa_recibida, nota, fecha_hora, registra_deuda:registraDeuda};
+    const venta = {id:nextId('ventas'), cantidad_vendida, divisa_vendida, cantidad_recibida, divisa_recibida, nota, fecha_hora, registra_deuda:registraDeuda, ...ventaCompradorSnapshot(compradorSel)};
     DB.ventas.push(venta);
     adjustBalance(divisa_vendida, -cantidad_vendida);
     if(registraDeuda){
       crearDeudaAutomatica({
         tipo:'me_deben', persona:`Venta de ${fmtMoney(cantidad_vendida)} ${divisa_vendida}`, monto:cantidad_recibida,
         divisa:divisa_recibida, fecha:fecha_hora, nota: nota || 'Registrado desde venta',
-        origen:'venta', origen_id:venta.id, tipo_me_deben: MEDEBEN_SUMAR_AL_COBRAR
+        origen:'venta', origen_id:venta.id, tipo_me_deben: MEDEBEN_SUMAR_AL_COBRAR,
+        ...ventaCompradorSnapshot(compradorSel)
       });
     } else {
       adjustBalance(divisa_recibida, cantidad_recibida);
@@ -181,6 +210,7 @@ function openVentaDetalle(id, onChange, opts={}){
       <div class="sumrow"><span class="k">Cantidad recibida</span><span class="v">${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(v.fecha_hora)}</span></div>
       <div class="sumrow"><span class="k">Estado</span><span class="v">${ventaEstado(v)}</span></div>
+      ${nombreCompradorDeVenta(v)?`<div class="sumrow"><span class="k">Comprador</span><span class="v">${escapeHtml(nombreCompradorDeVenta(v))}${nombreCompletoCompradorDeVenta(v)?` · ${escapeHtml(nombreCompletoCompradorDeVenta(v))}`:''}</span></div>`:''}
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(v.nota || 'Sin nota')}</span></div>
     </div>
     <div class="modal-actions">
@@ -227,6 +257,7 @@ function duplicarVenta(id, onSaved){
 function openVentaEditModal(id, onSaved){
   const v = DB.ventas.find(x=>x.id===id);
   if(!v){ toast('Venta no encontrada'); return; }
+  let compradorSel=v.comprador_id!=null?(compradorPorId(v.comprador_id)||{id:v.comprador_id,nombre:v.comprador_nombre||'',nombre_completo:v.comprador_nombre_completo||'',telefono:v.comprador_telefono||'',direccion:v.comprador_direccion||''}):null;
   openModal(`
     <div class="modal-title">Editar venta</div>
     <label class="field-label">Cantidad vendida *</label>
@@ -238,6 +269,8 @@ function openVentaEditModal(id, onSaved){
     <label class="field-label">Divisa recibida *</label>
     <select id="ve-drecibida" class="picker">${divisaOptionsHtml(v.divisa_recibida)}</select>
     ${v.registra_deuda ? `<div class="hint">Esta venta tiene una deuda pendiente asociada en Deudas → Me deben. Al guardar, esa deuda se actualizará con los nuevos valores.</div>` : ''}
+    <label class="field-label">Comprador (opcional)</label>
+    <div id="ve-comprador-wrap">${ventaCompradorCampoHtml('ve',compradorSel)}</div>
     <label class="field-label">Fecha y hora de la venta *</label>
     <input type="datetime-local" id="ve-fecha" value="${toLocalDatetimeValue(v.fecha_hora)}">
     <label class="field-label">Nota</label>
@@ -249,6 +282,14 @@ function openVentaEditModal(id, onSaved){
   `);
   bindAddOnSelect(document.getElementById('ve-dvendida'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(document.getElementById('ve-drecibida'), addDivisa, divisaOptionsHtml);
+  function renderComprador(){
+    const wrap=document.getElementById('ve-comprador-wrap'); if(!wrap)return;
+    wrap.innerHTML=ventaCompradorCampoHtml('ve',compradorSel);
+    document.getElementById('ve-comprador-picker').onclick=()=>openSelectorComprador(c=>{compradorSel=c;renderComprador();});
+    const clear=document.getElementById('ve-comprador-clear');
+    if(clear) clear.onclick=()=>{compradorSel=null;renderComprador();};
+  }
+  renderComprador();
   document.getElementById('ve-cancel').onclick = closeModal;
   document.getElementById('ve-save').onclick = ()=>{
     const cantidad_vendida = parseFloat(document.getElementById('ve-cvendida').value);
@@ -260,7 +301,7 @@ function openVentaEditModal(id, onSaved){
     if(!cantidad_vendida || !divisa_vendida || divisa_vendida==='__add__' || !cantidad_recibida || !divisa_recibida || divisa_recibida==='__add__' || !fechaVal){
       toast('Todos los campos obligatorios deben estar llenos.'); return;
     }
-    const nuevo = {cantidad_vendida, divisa_vendida, cantidad_recibida, divisa_recibida, fecha_hora:new Date(fechaVal).getTime(), nota};
+    const nuevo = {cantidad_vendida, divisa_vendida, cantidad_recibida, divisa_recibida, fecha_hora:new Date(fechaVal).getTime(), nota, ...ventaCompradorSnapshot(compradorSel)};
     confirmDialog('¿Guardar los cambios de esta venta? Se ajustará el balance general y la deuda asociada, si existe.', ()=>{
       closeModal();
       guardarEdicionVenta(v, nuevo);
@@ -288,6 +329,7 @@ function guardarEdicionVenta(v, nuevo){
   v.divisa_recibida = nuevo.divisa_recibida;
   v.fecha_hora = nuevo.fecha_hora;
   v.nota = nuevo.nota;
+  Object.assign(v, ventaCompradorSnapshot(nuevo.comprador_id!=null?compradorPorId(nuevo.comprador_id):null));
 
   adjustBalance(v.divisa_vendida, -v.cantidad_vendida);
   if(v.registra_deuda){
@@ -297,6 +339,7 @@ function guardarEdicionVenta(v, nuevo){
       deudaExistente.persona = `Venta de ${fmtMoney(v.cantidad_vendida)} ${v.divisa_vendida}`;
       deudaExistente.fecha = v.fecha_hora;
       deudaExistente.nota = v.nota || 'Registrado desde venta';
+      Object.assign(deudaExistente, ventaCompradorSnapshot(v));
       if(deudaExistente.estado==='cobrado'){
         adjustBalance(deudaExistente.divisa, deudaExistente.monto);
       }

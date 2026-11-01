@@ -1,6 +1,6 @@
 # Mapa de dependencias y efectos colaterales
 
-Última actualización: 2026-10-30
+Última actualización: 2026-11-01
 
 Este mapa indica dónde empieza una tarea, qué otras áreas pueden verse afectadas y qué conviene comprobar antes de darla por terminada. No es un grafo exhaustivo: confirma referencias y consumidores en el código actual.
 
@@ -29,16 +29,17 @@ Este mapa indica dónde empieza una tarea, qué otras áreas pueden verse afecta
 | Clientes | `js/clientes.js` | `js/db.js`, utilidades, envíos, historial, búsqueda y respaldos | Crear/editar un cliente de prueba; verificar que los envíos e historial sigan mostrando su referencia y que búsqueda lo encuentre. |
 | Trabajadores | `js/trabajadores.js` | `js/db.js`, envíos, deudas, búsqueda y respaldos | Crear/editar/desactivar un trabajador; comprobar envíos y deudas históricas vinculadas y búsqueda. |
 | Envíos | `js/envios.js`, `js/precio-especial.js` | clientes/trabajadores, destinatarios (`js/entregas.js`), balance-base, deudas, historial y respaldos | Crear y editar un envío de prueba; revisar importe, destinatario, deuda, saldo e historial; eliminar y deshacer. |
-| Entregas | `js/entregas.js` | envíos, deudas (aviso al mensajero), modelo y respaldos | Asignar/cambiar destinatario o mensajero, probar aviso WhatsApp cuando aplique y revisar vínculos tras deshacer. |
-| Ventas, compras, gastos, In/Out | `js/movimientos.js` | db, balance-base, deudas cuando aplique, paginación, historial/archivo, panel y respaldos | Registrar, editar y eliminar cada tipo afectado; comparar saldos, deudas, panel e historial. |
-| Deudas | `js/deudas.js` | operaciones de origen, balance-base, trabajadores/mensajeros, WhatsApp y respaldos | Crear deuda de prueba, registrar cobro/pago y cerrar; revisar saldo, estado, persona vinculada e historial. |
+| Entregas y Compradores | `js/entregas.js` | envíos, ventas, deudas, compradores, mensajeros y respaldos | Crear/editar/desactivar comprador; verificar búsqueda, datos de contacto históricos y que las ventas/deudas no pierdan su snapshot al desactivarlo. |
+| Transferencias Internas | `js/transferencias.js` | `js/db.js`, `js/balance-base.js`, `js/balance.js`, paginación, router, búsqueda, historial por divisa, `js/importacion.js` y `sw.js` | Crear/editar/eliminar con datos ficticios; revisar ambas divisas en balance general/filtrado, dos movimientos en historiales, retorno/scroll, Deshacer de 2 s, búsqueda e importación. Confirmar que una divisa igual o una cantidad no positiva no se guarden y que el origen puede quedar negativo. |
+| Ventas, compras, gastos, In/Out | `js/movimientos.js` | db, compradores (`js/entregas.js`), balance-base, deudas, paginación, historial/archivo, panel, búsqueda y respaldos | Crear/editar venta con y sin comprador; verificar snapshot de nombre/contacto, etiqueta en fila, deuda asociada, importes, eliminar y Deshacer; comprobar compras/gastos/In-Out sin regresiones. |
+| Deudas | `js/deudas.js` | ventas, compradores, balance-base, mensajeros, WhatsApp, búsqueda e importación | Verificar agrupación solo por comprador + divisa + tipo; deudas sin comprador quedan individuales; una divisa distinta o tipo distinto crea otro grupo; cobro cambia todos los registros una sola vez; eliminación de venta recalcula; préstamo resta al crearse y suma al cobrar; WhatsApp incluye todas las monedas pendientes del comprador y guarda mensajero/fecha. |
 | Balance y divisas | `js/balance.js`, `js/balance-base.js` | operaciones que registran movimientos, modelo, `js/balance-reorder.js`, panel e historial | Comparar totales por divisa antes/después de operaciones; reordenar divisas, navegar y reabrir para confirmar persistencia. |
 | Historial y archivo | `js/historial.js`, `js/archivo.js` | envíos/operaciones, deudas, búsqueda, paginación y balance | Archivar/restaurar sin alterar cálculos; eliminar un envío desde detalle, comprobar retorno/scroll y probar Deshacer. |
 | Eliminaciones con Deshacer | `eliminarConDeshacer()` y `mostrarToastDeshacer()` en `js/utilidades.js`; callers en clientes, trabajadores, envíos, entregas, deudas y movimientos | cada módulo de origen y efectos en balance/deudas/historial | Eliminar un registro ficticio, usar Deshacer dentro de 5 s y confirmar recuperación íntegra; comprobar que una segunda eliminación respeta la regla documentada. |
 | Fechas en formularios y filtros | `js/fecha-previa.js` (control universal) y pantalla que genere el campo | envíos, ventas, compras, gastos, In/Out, deudas, filtro personalizado de Historial y Balance; CSS común | En cada campo, comprobar la disposición ◀ [fecha] ▶ y ambos sentidos; probar date/datetime-local, hora conservada, valores vacíos y fechas límite. |
 | Panel Hoy/Ayer | `js/panel.js` | campos/fechas de operaciones, divisas y balance; debe seguir siendo de consulta | Comparar Hoy/Ayer con los registros fuente para ambas fechas y confirmar que abrir el panel no modifica datos. |
 | Búsqueda global | `js/busqueda.js` | listados y rutas de clientes, trabajadores, envíos, ventas, compras, gastos y deudas | Buscar registros ficticios por nombre y texto parcial; abrir cada resultado y volver sin perder la navegación. |
-| Respaldos | `js/respaldos.js` | todo el esquema de `js/db.js`, claves/versiones de formato y `js/xlsx.js` si afecta Excel | Exportar, importar en perfil de prueba y comparar registros/relaciones; no usar datos reales en pruebas ni logs. |
+| Respaldos e importación | `js/respaldos.js`, `js/importacion.js` | todo el esquema de `js/db.js`, relaciones/IDs, versiones antiguas y `js/xlsx.js` si afecta Excel | Exportar/importar respaldos actuales y antiguos sin las tablas nuevas; comparar registros, compradores, transferencias, IDs relacionados y balance; repetir el mismo respaldo para verificar deduplicación. No usar datos reales en pruebas ni logs. |
 | Apariencia | `prefs.js`, `js/ajustes.js` | almacenamiento de preferencias y puente de color Android | Cambiar tema/acento, reiniciar y validar legibilidad en las pantallas principales y en APK si aplica. |
 
 ## Flujo de cambio seguro
@@ -56,3 +57,8 @@ Este mapa indica dónde empieza una tarea, qué otras áreas pueden verse afecta
 - No des por hecho que el mapa está completo: el código y sus referencias actuales tienen prioridad.
 - No inventes pruebas automatizadas. Describe como manual toda comprobación hecha sin un runner de tests.
 - No copies datos reales, secretos, claves de firma ni claves de respaldo a estos documentos.
+
+
+## Aclaración para Compradores y deudas manuales
+
+Una deuda manual de `Me deben` también se asocia al comprador cuando su nombre normalizado coincide exactamente con el de un comprador existente, aunque no se haya elegido desde el selector. La comprobación de consolidación debe cubrir este caso además de las deudas creadas desde ventas. Al eliminar un grupo con ventas vinculadas, se eliminan esas ventas y se revierten sus efectos para no dejar operaciones huérfanas. En préstamos cobrados, el efecto neto de creación y cobro es cero; la eliminación del grupo no debe descontar nuevamente el monto.

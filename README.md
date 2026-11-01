@@ -1,17 +1,19 @@
 # Remesas — PeterServices
 
-Última actualización: 2026-10-29
+Última actualización: 2026-11-01
 
 Aplicación local para administrar un negocio de remesas. Incluye una interfaz web progresiva (PWA) y una APK Android que presenta la misma aplicación dentro de un WebView.
 
 ## Qué permite gestionar
 
-Clientes, trabajadores, envíos, destinatarios y mensajeros, historial, ventas, compras, gastos, movimientos In/Out, divisas, balance, deudas, respaldos y preferencias de apariencia.
+Clientes, trabajadores, envíos, destinatarios, mensajeros y compradores; ventas, compras, gastos, In/Out y transferencias internas; historial, divisas, balance, deudas y respaldos.
 
 ## Arquitectura en breve
 
 - **Web:** HTML, CSS y JavaScript clásico, sin framework ni proceso de empaquetado.
-- **Datos:** se guardan localmente en el dispositivo mediante IndexedDB, con compatibilidad/migración desde localStorage.
+- **Datos:** se guardan localmente en el dispositivo mediante IndexedDB, con compatibilidad/migración desde localStorage. Las tablas nuevas de Compradores y Transferencias se incorporan mediante defaults sin reiniciar datos existentes.
+- **Operaciones:** Transferencias Internas mueve importes entre dos divisas sin registrar ganancia ni calcular una tasa. En Ventas se puede asociar un comprador; las deudas pendientes asociadas se agrupan visualmente por comprador, divisa y tipo, sin fusionar los registros originales.
+- **Cobros:** desde el detalle de un grupo pendiente se puede preparar un mensaje de WhatsApp para un mensajero con todas las divisas pendientes de ese comprador. El envío final se confirma en WhatsApp.
 - **PWA:** el service worker precarga los recursos para permitir el uso offline después de la carga inicial.
 - **Android:** un WebView carga una copia de los archivos web empaquetada dentro de la APK.
 - **Actualizaciones:** los datos del negocio no se sincronizan con un servidor. La comprobación de nuevas APK consulta GitHub Releases y necesita conexión.

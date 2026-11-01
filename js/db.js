@@ -44,6 +44,8 @@ function defaultDB(){
     deudas: [],
     destinatarios: [], // Entregas: quienes reciben el dinero
     mensajeros: [],    // Entregas: quienes lo entregan
+    compradores: [],   // Compradores asociados a ventas
+    transferencias: [], // Movimientos internos entre divisas
     paises: [
       {id:1, nombre:'Estados Unidos', es_predefinido:1},
       {id:2, nombre:'México', es_predefinido:1},
@@ -55,7 +57,7 @@ function defaultDB(){
       {id:1, nombre:'USD'}, {id:2, nombre:'MXN'}, {id:3, nombre:'EUR'},
       {id:4, nombre:'BRL'}, {id:5, nombre:'UYU'},
     ],
-    seq: {divisas:9, clientes:1, trabajadores:1, envios:1, ventas:1, compras:1, gastos:1, in_out:1, paises:6, monedas:6, deudas:1, destinatarios:1, mensajeros:1},
+    seq: {divisas:9, clientes:1, trabajadores:1, envios:1, ventas:1, compras:1, gastos:1, in_out:1, paises:6, monedas:6, deudas:1, destinatarios:1, mensajeros:1, compradores:1, transferencias:1},
     meta: {creado: now, nombre_negocio: 'Mi negocio de remesas'}
   };
 }

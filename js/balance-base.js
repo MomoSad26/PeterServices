@@ -23,6 +23,7 @@ function contarRegistrosActivosDeDivisa(nombre){
   n += DB.compras.filter(c=>!c.archivado && (c.divisa_comprada===nombre || c.divisa_pagada===nombre)).length;
   n += DB.gastos.filter(g=>!g.archivado && g.divisa===nombre).length;
   n += DB.in_out.filter(io=>!io.archivado && io.divisa===nombre).length;
+  n += (DB.transferencias||[]).filter(t=>t.divisa_origen===nombre || t.divisa_destino===nombre).length;
   // Las deudas no tienen campo "archivado": su equivalente de "activo" es
   // estado 'pendiente' (una deuda ya pagada/cobrada es, en espíritu, historial).
   n += DB.deudas.filter(d=>d.estado==='pendiente' && d.divisa===nombre).length;

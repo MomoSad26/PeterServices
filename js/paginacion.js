@@ -10,6 +10,7 @@ const paginacion = {
   compras:          {actual:1},
   gastos:           {actual:1},
   in_out:           {actual:1},
+  transferencias:   {actual:1},
   deudas_historial: {actual:1},
 };
 

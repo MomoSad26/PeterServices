@@ -1,6 +1,6 @@
 # Invariantes del proyecto Remesas
 
-Última actualización: 2026-10-29
+Última actualización: 2026-11-01
 
 Estas reglas protegen datos existentes, cálculos del negocio y la capacidad de instalar actualizaciones. Se deben revisar antes de modificar código funcional, persistencia, navegación, PWA o Android. Si una tarea exige cambiar una de ellas, debe tratarse como una decisión técnica explícita, no como un efecto secundario.
 
@@ -14,7 +14,11 @@ Estas reglas protegen datos existentes, cálculos del negocio y la capacidad de 
 
 ## Integridad funcional
 
-- Operaciones de envíos, ventas, compras, gastos e In/Out pueden afectar saldos, deudas, historial, panel y búsqueda. Sigue `docs/DEPENDENCY_MAP.md` antes de tocar esos flujos.
+- Operaciones de envíos, ventas, compras, gastos e In/Out pueden afectar saldos, deudas, historial, panel y búsqueda. Las transferencias internas restan de la divisa origen y suman a la destino, sin ganancia ni conversión automática. Una edición o eliminación debe revertir exactamente los efectos previos.
+- La consolidación de `Me deben` es solo visual: no fusiona ni reemplaza los registros individuales. Se agrupa por comprador (nombre normalizado) + divisa + tipo de deuda; nunca se mezclan divisas ni tipos. El cobro de un grupo marca cada registro una vez y aplica su efecto de balance correspondiente.
+- Una venta y su deuda conservan un snapshot del nombre y los datos de contacto del comprador. Desactivar/eliminar un comprador de Entregas no puede borrar la referencia histórica.
+- El envío a mensajero es una invitación a WhatsApp con texto preparado, no un envío automático. Al notificar un grupo se incluyen todas las divisas pendientes del comprador y se persiste el último mensajero/fecha en las deudas afectadas.
+- La importación debe tolerar respaldos antiguos sin `compradores` ni `transferencias`, remapear IDs referenciados y deduplicar operaciones antes de aplicar efectos incrementales al balance. No cambies la clave/formato de cifrado para añadir tablas.
 - Clientes, trabajadores, destinatarios y mensajeros pueden tener referencias históricas. Comprueba desactivación y eliminación antes de cambiar su comportamiento.
 - Mantén `Ajustes` como último elemento del menú principal.
 - Mantén el aviso de actualización como decisión de la persona usuaria. Ni la PWA ni la APK deben reemplazar la interfaz en uso sin la confirmación prevista.
@@ -23,7 +27,7 @@ Estas reglas protegen datos existentes, cálculos del negocio y la capacidad de 
 ## JavaScript y PWA
 
 - Los archivos `js/*.js` son scripts clásicos que comparten ámbito global. Conserva el orden de carga en `index.html`; no conviertas módulos a `import/export` como parte de una mejora localizada.
-- Todo script nuevo, eliminado o renombrado debe reflejarse en `index.html` y en la lista `FILES` de `sw.js`.
+- Todo script nuevo, eliminado o renombrado debe reflejarse en `index.html` y en la lista `FILES` de `sw.js`. Los módulos nuevos deben cargarse después de sus dependencias o usar funciones globales solo después de que el arranque haya cargado todos los scripts.
 - Al cambiar recursos cacheados, revisa si hay que incrementar `CACHE` para que los dispositivos reciban la versión nueva.
 - El flujo principal debe seguir funcionando offline después de la carga y caché inicial. La comprobación de nuevas APK en Android sí requiere conexión.
 
@@ -45,3 +49,12 @@ Estas reglas protegen datos existentes, cálculos del negocio y la capacidad de 
 ## Privacidad
 
 No incluyas en documentación, ejemplos, capturas, issues o logs datos identificables de clientes, envíos, destinatarios, saldos, respaldos reales, credenciales ni claves. Usa datos ficticios para ejemplos y pruebas.
+
+
+## Compradores, deudas y transferencias (2026-11-01)
+
+- Los snapshots de comprador guardados en ventas/deudas prevalecen sobre datos editados posteriormente en la ficha y mantienen una referencia legible aunque el comprador se desactive.
+- Las deudas manuales cuyo nombre normalizado coincide con un comprador se incorporan al mismo grupo comprador + divisa + tipo. No se permite que la agrupación mezcle divisas o tipos distintos.
+- Al cobrar una deuda agrupada se procesa cada registro una sola vez. Al eliminar, se revierten los efectos netos: un Préstamo ya cobrado no debe generar un segundo descuento porque su débito inicial y su cobro se compensan.
+- Una transferencia interna siempre afecta dos divisas diferentes: resta del origen y suma al destino; los cambios y eliminaciones revierten esos mismos efectos. Nunca produce ganancia ni tasa implícita.
+- Los respaldos anteriores que no tengan tablas `compradores` o `transferencias` siguen siendo válidos; la fusión no reemplaza los datos locales ni reutiliza IDs.

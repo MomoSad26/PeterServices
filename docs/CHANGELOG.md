@@ -1,5 +1,13 @@
 # Historial breve y línea base
 
+## 2026-11-01 — Compradores, deudas consolidadas y Transferencias Internas
+
+- Entregas incorpora la pestaña Compradores con ficha, búsqueda y desactivación reversible; Ventas permite asignar/cambiar comprador y conserva una copia histórica de los datos de contacto.
+- «Me deben» agrupa visualmente por comprador + divisa + tipo, conserva cada deuda individual y permite cobrar el grupo completo. WhatsApp al mensajero incluye todas las divisas pendientes del comprador y registra la última notificación.
+- Se añadió Transferencias Internas con cantidades introducidas manualmente, validación de divisas distintas, paginación, detalle/edición/eliminación con Deshacer de 2 segundos y reflejo en balance, historial por divisa y búsqueda.
+- Se implementó `js/importacion.js` para la fusión JSON/RMB, que faltaba en el código previo aunque la pantalla de Respaldos ya la invocaba. Soporta tablas nuevas opcionales, remapeo de IDs y deduplicación sin reemplazar la base local.
+- Se incrementó la caché PWA a `remesas-v29`. No se modificaron la firma Android, el identificador de aplicación ni el workflow; no se compiló APK.
+
 Este documento conserva hitos útiles para futuras sesiones; no sustituye el historial Git ni pretende listar cada cambio. Verifica siempre el código actual antes de asumir que una nota histórica sigue vigente.
 
 ## Estado de referencia

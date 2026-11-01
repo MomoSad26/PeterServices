@@ -1,6 +1,6 @@
 # Mapa del proyecto Remesas
 
-Última actualización: 2026-10-30
+Última actualización: 2026-11-01
 
 Índice de navegación. Lee la sección pertinente; no abras todos los archivos por defecto. Las reglas obligatorias están en `docs/INVARIANTS.md` y las relaciones entre módulos en `docs/DEPENDENCY_MAP.md`.
 
@@ -41,11 +41,13 @@ El impacto indica la consecuencia típica de una regresión, no una prioridad pa
 | Navegación | `js/router.js`, `js/interfaz.js` | cambien rutas, overlays, modales o Atrás | Alto: acceso y estado de pantallas |
 | Clientes y trabajadores | `js/clientes.js`, `js/trabajadores.js` | cambien fichas, listados o formularios | Alto: referencias históricas |
 | Envíos | `js/envios.js`, `js/precio-especial.js` | cambien formularios o reglas de creación | Crítico: saldos, deudas e historial |
-| Entregas | `js/entregas.js` | cambien destinatarios, mensajeros o sus datos | Alto: asignaciones y deudas asociadas |
+| Entregas y compradores | `js/entregas.js` | cambien destinatarios, mensajeros o compradores | Alto: contactos y referencias históricas |
+| Transferencias internas | `js/transferencias.js` | cambien movimientos entre divisas | Crítico: balance de origen/destino, historial por divisa y reversión |
+| Ventas y compradores | `js/movimientos.js`, `js/entregas.js` | cambien ventas o asociación de compradores | Crítico: snapshot de contacto, deuda vinculada, búsqueda y balance |
 | Historial | `js/historial.js`, `js/paginacion.js`, `js/archivo.js` | cambien filtros, páginas o archivado | Alto: consulta y recuperación de operaciones |
 | Operaciones | `js/movimientos.js` | cambien ventas, compras, gastos o In/Out | Crítico: saldos y deudas |
-| Deudas | `js/deudas.js` | cambien creación, cierre, cobro o pago | Crítico: obligaciones y saldos |
-| Respaldo y exportación | `js/respaldos.js`, `js/xlsx.js` | cambien importación, exportación, cifrado o Excel | Crítico: recuperación y portabilidad de datos |
+| Deudas | `js/deudas.js` | cambien creación, cierre, cobro o pago | Crítico: obligaciones, consolidación virtual, notificación y saldos |
+| Respaldo y exportación | `js/respaldos.js`, `js/importacion.js`, `js/xlsx.js` | cambien importación, exportación, fusión, cifrado o Excel | Crítico: recuperación y portabilidad de datos |
 | Panel | `js/panel.js` | cambie el resumen operativo Hoy/Ayer | Medio: consistencia de indicadores |
 | Búsqueda | `js/busqueda.js` | cambie el buscador global | Medio: acceso a registros |
 | Fechas | `js/fecha-previa.js` | cambien los controles universales para retroceder/adelantar un día | Medio: fecha de imputación |
@@ -59,7 +61,7 @@ Los scripts se cargan en `index.html`, no usan `import/export`. Consulta la secu
 
 ## Navegación principal
 
-Las rutas se declaran en `index.html` y se resuelven en `js/router.js`: Panel, Clientes, Envío, Trabajadores, Entregas, Historial, Compras, Ventas, Gastos, In/Out, Balance, Deudas, Respaldos y Ajustes. `Ajustes` debe permanecer como último elemento.
+Las rutas se declaran en `index.html` y se resuelven en `js/router.js`: Panel, Clientes, Envío, Trabajadores, Entregas, Historial, Compras, Ventas, Gastos, In/Out, Transferencias Internas, Balance, Deudas, Respaldos y Ajustes. `Ajustes` debe permanecer como último elemento.
 
 ## Android y publicación
 

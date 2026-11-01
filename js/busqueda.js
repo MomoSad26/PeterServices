@@ -11,7 +11,8 @@ const BUSQUEDA_RUTAS = {
   ventas:'ventas',
   compras:'compras',
   gastos:'gastos',
-  deudas:'deudas'
+  deudas:'deudas',
+  transferencias:'transferencias'
 };
 const BUSQUEDA_VISTAS_DETALLE = ['cliente-detalle','trabajador-detalle','envio-detalle'];
 
@@ -30,7 +31,7 @@ function sincronizarFiltroBusquedaRuta(view,param){
       const consulta=busquedaDecodificar(m[1]);
       busquedaFiltroLista={seccion,consulta};
       busquedaTextoActual=consulta;
-      const paginaPorSeccion={envios:'historial',ventas:'ventas',compras:'compras',gastos:'gastos'};
+      const paginaPorSeccion={envios:'historial',ventas:'ventas',compras:'compras',gastos:'gastos',transferencias:'transferencias'};
       const pagina=paginacion[paginaPorSeccion[seccion]];
       if(pagina) pagina.actual=1;
     }else{
@@ -104,7 +105,7 @@ function busquedaInfoRegistro(seccion,r){
     fechas(r.fecha_hora);
     montos(r.cantidad_enviada,r.precio,r.cantidad_pagada,r.cotizado_a,r.ganancia);
   }else if(seccion==='ventas'){
-    textos(r.divisa_vendida,r.divisa_recibida,r.nota,ventaEstado(r));
+    textos(r.divisa_vendida,r.divisa_recibida,r.comprador_nombre,r.comprador_nombre_completo,r.nota,ventaEstado(r));
     fechas(r.fecha_hora);
     montos(r.cantidad_vendida,r.cantidad_recibida);
   }else if(seccion==='compras'){
@@ -115,8 +116,12 @@ function busquedaInfoRegistro(seccion,r){
     textos(r.concepto,r.divisa,r.nota,r.archivado?'Archivado':'');
     fechas(r.fecha_hora);
     montos(r.cantidad);
+  }else if(seccion==='transferencias'){
+    textos(r.divisa_origen,r.divisa_destino,r.nota,'Transferencia');
+    fechas(r.fecha_hora);
+    montos(r.cantidad_origen,r.cantidad_destino);
   }else if(seccion==='deudas'){
-    textos(r.persona,r.divisa,r.estado,r.tipo,r.nota,r.origen);
+    textos(r.persona,r.comprador_nombre,r.comprador_nombre_completo,r.divisa,r.estado,r.tipo,r.nota,r.origen);
     fechas(r.fecha,r.creado_en,r.fecha_cierre);
     montos(r.monto);
   }
@@ -154,6 +159,9 @@ function busquedaDetalleRegistro(seccion,r){
   if(seccion==='gastos'){
     return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad)} ${escapeHtml(r.divisa)}${archivado}`;
   }
+  if(seccion==='transferencias'){
+    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_origen)} ${escapeHtml(r.divisa_origen)} → ${fmtMoney(r.cantidad_destino)} ${escapeHtml(r.divisa_destino)}${r.nota?' · '+escapeHtml(r.nota):''}`;
+  }
   if(seccion==='deudas'){
     const estado=r.estado==='pendiente'?'Pendiente':(r.estado==='pagado'?'Pagado':'Cobrado');
     return `${fmtDateShort(r.fecha)} · ${fmtMoney(r.monto)} ${escapeHtml(r.divisa)} · ${estado}`;
@@ -166,7 +174,8 @@ function busquedaTituloRegistro(seccion,r){
   if(seccion==='ventas') return `${fmtMoney(r.cantidad_vendida)} ${r.divisa_vendida} → ${fmtMoney(r.cantidad_recibida)} ${r.divisa_recibida}`;
   if(seccion==='compras') return `${fmtMoney(r.cantidad_pagada)} ${r.divisa_pagada} → ${fmtMoney(r.cantidad_comprada)} ${r.divisa_comprada}`;
   if(seccion==='gastos') return r.concepto||'Gasto';
-  if(seccion==='deudas') return r.persona||'Deuda';
+  if(seccion==='deudas') return r.comprador_nombre||r.persona||'Deuda';
+  if(seccion==='transferencias') return `${fmtMoney(r.cantidad_origen)} ${r.divisa_origen} → ${fmtMoney(r.cantidad_destino)} ${r.divisa_destino}`;
   return 'Registro';
 }
 function busquedaDefiniciones(){
@@ -177,7 +186,8 @@ function busquedaDefiniciones(){
     {key:'ventas',icono:'💱',titulo:'Ventas',registros:(DB.ventas||[])},
     {key:'compras',icono:'🛒',titulo:'Compras',registros:(DB.compras||[])},
     {key:'gastos',icono:'🧾',titulo:'Gastos',registros:(DB.gastos||[])},
-    {key:'deudas',icono:'🤝',titulo:'Deudas',registros:(DB.deudas||[])}
+    {key:'deudas',icono:'🤝',titulo:'Deudas',registros:(DB.deudas||[])},
+    {key:'transferencias',icono:'🔀',titulo:'Transferencias',registros:(DB.transferencias||[])}
   ];
 }
 function busquedaRegistroFechaOrden(seccion,r){
@@ -205,6 +215,7 @@ function busquedaAbrirResultado(seccion,id){
   if(seccion==='compras'){ openCompraDetalle(id,refrescar); return; }
   if(seccion==='gastos'){ openGastoDetalle(id,refrescar); return; }
   if(seccion==='deudas'){ openDeudaDetalle(id,refrescar); return; }
+  if(seccion==='transferencias'){ openTransferenciaDetalle(id,refrescar); return; }
 }
 function busquedaVerTodos(seccion){
   const consulta=busquedaTextoActual.trim();

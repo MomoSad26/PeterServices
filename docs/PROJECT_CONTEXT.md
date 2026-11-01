@@ -1,10 +1,10 @@
 # Contexto técnico del proyecto Remesas
 
-Última actualización: 2026-10-30
+Última actualización: 2026-11-01
 
 ## Producto y arquitectura
 
-Remesas es una aplicación local de gestión de un negocio de remesas: clientes, trabajadores, envíos, entregas, historial, operaciones, divisas, balance, deudas, respaldos y ajustes.
+Remesas es una aplicación local de gestión de un negocio de remesas: clientes, trabajadores, envíos, entregas, compradores, historial, ventas, compras, gastos, In/Out, transferencias internas, divisas, balance, deudas, respaldos y ajustes.
 
 - Aplicación web estática en la raíz: HTML, CSS y JavaScript clásico, sin framework ni proceso de empaquetado.
 - Los archivos de `js/` comparten ámbito global y se cargan en el orden declarado en `index.html`.
@@ -16,11 +16,15 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 
 - La base principal se guarda en IndexedDB; `js/db.js` conserva compatibilidad y migración desde localStorage.
 - Las preferencias visuales se guardan aparte mediante `prefs.js` y no forman parte del respaldo general.
-- Envíos, ventas, compras, gastos e In/Out pueden afectar saldos y deudas; sus cambios se reflejan también en historial, panel y búsqueda.
+- Envíos, ventas, compras, gastos, In/Out y transferencias internas pueden afectar saldos; los cambios se reflejan en balance, historial por divisa y búsqueda.
+- Las transferencias internas registran cantidades origen/destino introducidas manualmente, sin tasa automática ni ganancia. Se reflejan como una salida y una entrada, respectivamente.
+- Entregas contiene Destinatarios, Mensajeros y Compradores. Las ventas pueden guardar `comprador_id` y un snapshot histórico de nombre y contacto.
+- `js/deudas.js` agrupa virtualmente las deudas pendientes por comprador (nombre normalizado), divisa y tipo. Las filas individuales siguen en `DB.deudas`; cobrar un grupo cambia todos sus integrantes y aplica su efecto de balance una sola vez por registro.
+- La notificación a un mensajero desde un grupo de cobro prepara un WhatsApp con todas las divisas pendientes del comprador; la persona usuaria confirma el envío desde WhatsApp.
 - Los registros archivados se mantienen para cálculos y relaciones.
 - `js/fecha-previa.js` añade controles ◀/▶ de día a todos los campos editables `date` y `datetime-local`, incluidos los que aparecen dinámicamente en formularios y filtros. Emite eventos `input` y `change`; `datetime-local` conserva su hora y usa aritmética de calendario local.
 - La navegación se define en `index.html` y `js/router.js`; Ajustes permanece como último menú.
-- Los respaldos manuales/automáticos se gestionan en `js/respaldos.js`. Preserva compatibilidad con los formatos antiguos y no expongas las claves heredadas de respaldo.
+- Los respaldos cifrados manuales/automáticos se generan en `js/respaldos.js`; `js/importacion.js` implementa la fusión por tabla, remapeo de IDs y actualización incremental del balance. Las tablas ausentes en respaldos antiguos se ignoran y los formatos antiguos siguen siendo importables.
 
 ## Android y publicación
 
@@ -42,3 +46,11 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 ## Validación
 
 El repositorio no contiene actualmente una suite automatizada de pruebas. La validación funcional se realiza con comprobaciones manuales enfocadas al área afectada; consulta `docs/DEPENDENCY_MAP.md` y registra qué se verificó realmente.
+
+
+## Compradores, deuda virtual y transferencias (2026-11-01)
+
+- La pestaña Compradores se incorpora a Entregas; las ventas y deudas guardan snapshots de nombre, nombre completo, teléfono y dirección para conservar los datos históricos después de desactivar el contacto.
+- `Me deben` se agrupa en pantalla por comprador + divisa + tipo, sin convertir los grupos en nuevos registros persistidos. Las deudas manuales se asocian por selección o por coincidencia exacta de nombre normalizado. La notificación a mensajero prepara un único WhatsApp con todas las divisas pendientes del comprador.
+- `js/transferencias.js` mantiene movimientos origen/destino como operaciones independientes; el balance filtrado y el historial por divisa reflejan la salida y la entrada con el signo correspondiente. No se calcula tasa ni ganancia.
+- `js/importacion.js` implementa la fusión de respaldos, porque la interfaz existente invocaba `mergeImport` sin que estuviera definida en el repositorio. Las tablas nuevas son opcionales para admitir archivos anteriores; los IDs relacionados se remapean y las operaciones se deduplican antes de aplicar importes.

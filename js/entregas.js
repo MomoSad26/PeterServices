@@ -5,7 +5,7 @@
  *      Eliminar = desactivar (activo = 0), igual que clientes y
  *      trabajadores: los envíos antiguos conservan el nombre como historial.
  * ---------------------------------------------------------------------- */
-let entregasTab = 'destinatarios'; // 'destinatarios' | 'mensajeros'
+let entregasTab = 'destinatarios'; // 'destinatarios' | 'mensajeros' | 'compradores'
 
 const ENTREGAS_TIPOS = {
   destinatarios: {
@@ -16,6 +16,10 @@ const ENTREGAS_TIPOS = {
     tabla:'mensajeros', singular:'mensajero', titulo:'Mensajeros', icono:'🛵',
     vacio:'Aún no hay mensajeros registrados', eliminado:'Mensajero eliminado',
   },
+  compradores: {
+    tabla:'compradores', singular:'comprador', titulo:'Compradores', icono:'🛒',
+    vacio:'Aún no hay compradores registrados', eliminado:'Comprador eliminado',
+  },
 };
 
 function entregasActivos(tabla){
@@ -23,6 +27,21 @@ function entregasActivos(tabla){
 }
 function destinatarioPorId(id){ return id==null ? null : (DB.destinatarios||[]).find(d=>d.id===id) || null; }
 function mensajeroPorId(id){ return id==null ? null : (DB.mensajeros||[]).find(m=>m.id===id) || null; }
+function compradorPorId(id){ return id==null ? null : (DB.compradores||[]).find(c=>c.id===id) || null; }
+function compradorActivoPorId(id){ const c=compradorPorId(id); return c && c.activo ? c : null; }
+function compradoresActivos(){ return entregasActivos('compradores'); }
+function compradorSnapshot(c){
+  return c ? {comprador_id:c.id, comprador_nombre:c.nombre||'', comprador_nombre_completo:c.nombre_completo||'', comprador_telefono:c.telefono||'', comprador_direccion:c.direccion||''}
+    : {comprador_id:null, comprador_nombre:'', comprador_nombre_completo:'', comprador_telefono:'', comprador_direccion:''};
+}
+function nombreCompradorDeVenta(v){
+  if(!v) return '';
+  return v.comprador_nombre || compradorPorId(v.comprador_id)?.nombre || '';
+}
+function nombreCompletoCompradorDeVenta(v){
+  if(!v) return '';
+  return v.comprador_nombre_completo || compradorPorId(v.comprador_id)?.nombre_completo || '';
+}
 
 function destinatarioSubtitulo(d){
   const partes = [];
@@ -50,6 +69,7 @@ function renderEntregas(content, param){
     <div class="tabs" id="ent-tabs">
       <div class="tab ${entregasTab==='destinatarios'?'active':''}" data-v="destinatarios">👤 Destinatarios</div>
       <div class="tab ${entregasTab==='mensajeros'?'active':''}" data-v="mensajeros">🛵 Mensajeros</div>
+      <div class="tab ${entregasTab==='compradores'?'active':''}" data-v="compradores">🛒 Compradores</div>
     </div>
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
@@ -83,7 +103,7 @@ function renderEntregas(content, param){
     t.onclick = ()=>{ entregasTab = t.dataset.v; renderEntregas(content); actualizarFabEnvio(); };
   });
   document.getElementById('fab-add-entrega').onclick = ()=>{
-    const abrir = entregasTab==='destinatarios' ? openDestinatarioFormModal : openMensajeroFormModal;
+    const abrir = entregasTab==='destinatarios' ? openDestinatarioFormModal : (entregasTab==='mensajeros' ? openMensajeroFormModal : openCompradorFormModal);
     abrir(null, refrescar);
   };
   refrescar();
@@ -138,6 +158,44 @@ function openDestinatarioFormModal(id, onSaved){
   };
 }
 
+function openCompradorFormModal(id, onSaved){
+  const editing=id ? compradorPorId(id) : null;
+  openModal(`
+    <div class="modal-title">${editing?'Editar comprador':'Agregar comprador'}</div>
+    <label class="field-label">Nombre *</label>
+    <input type="text" id="brf-nombre" maxlength="100" value="${escapeHtml(editing?.nombre||'')}" placeholder="Por este nombre se busca">
+    <label class="field-label">Nombre completo</label>
+    <input type="text" id="brf-completo" maxlength="150" value="${escapeHtml(editing?.nombre_completo||'')}" placeholder="Opcional">
+    <label class="field-label">Carnet de identidad</label>
+    <input type="text" id="brf-carnet" maxlength="30" value="${escapeHtml(editing?.carnet||'')}" placeholder="Opcional">
+    <label class="field-label">Teléfono</label>
+    <input type="tel" id="brf-tel" maxlength="25" value="${escapeHtml(editing?.telefono||'')}" placeholder="Opcional">
+    <label class="field-label">Dirección</label>
+    <textarea id="brf-dir" maxlength="300" placeholder="Opcional">${escapeHtml(editing?.direccion||'')}</textarea>
+    <label class="field-label">Nota</label>
+    <textarea id="brf-nota" maxlength="500" placeholder="Opcional">${escapeHtml(editing?.nota||'')}</textarea>
+    <div id="brf-error" style="color:var(--red-text);font-size:13px;margin-top:10px;display:none;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="brf-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="brf-save">Guardar</button>
+    </div>
+  `);
+  setTimeout(()=>document.getElementById('brf-nombre')?.focus(),150);
+  document.getElementById('brf-cancel').onclick=closeModal;
+  document.getElementById('brf-save').onclick=()=>{
+    const nombre=document.getElementById('brf-nombre').value.trim();
+    const err=document.getElementById('brf-error');
+    if(!nombre){err.textContent='El nombre del comprador es obligatorio.';err.style.display='block';return;}
+    const duplicado=(DB.compradores||[]).find(c=>c.id!==editing?.id&&c.activo&&normalizarTexto(c.nombre)===normalizarTexto(nombre));
+    if(duplicado){err.textContent='Ya existe un comprador activo con ese nombre.';err.style.display='block';return;}
+    const datos={nombre,nombre_completo:document.getElementById('brf-completo').value.trim(),carnet:document.getElementById('brf-carnet').value.trim(),telefono:document.getElementById('brf-tel').value.trim(),direccion:document.getElementById('brf-dir').value.trim(),nota:document.getElementById('brf-nota').value.trim()};
+    let comprador;
+    if(editing){Object.assign(editing,datos);comprador=editing;}
+    else{comprador={id:nextId('compradores'),...datos,fecha_registro:Date.now(),activo:1};DB.compradores.push(comprador);}
+    save();closeModal();toast(editing?'Comprador actualizado':'Comprador agregado');onSaved&&onSaved(comprador);
+  };
+}
+
 function openMensajeroFormModal(id, onSaved){
   const editing = id ? mensajeroPorId(id) : null;
   openModal(`
@@ -177,10 +235,10 @@ function openMensajeroFormModal(id, onSaved){
 /* ---- Detalle (con Editar y Eliminar) ---- */
 function openEntregaDetalle(tipo, id, onChange){
   const cfg = ENTREGAS_TIPOS[tipo];
-  const x = tipo==='destinatarios' ? destinatarioPorId(id) : mensajeroPorId(id);
+  const x = tipo==='destinatarios' ? destinatarioPorId(id) : (tipo==='mensajeros' ? mensajeroPorId(id) : compradorPorId(id));
   if(!x) return;
   const fila = (k, v)=> `<div class="sumrow"><span class="k">${k}</span><span class="v" style="white-space:pre-line;">${escapeHtml(v || '—')}</span></div>`;
-  const filas = tipo==='destinatarios'
+  const filas = tipo==='destinatarios' || tipo==='compradores'
     ? fila('Nombre', x.nombre) + fila('Nombre completo', x.nombre_completo) + fila('Carnet de identidad', x.carnet) +
       fila('Teléfono', x.telefono) + fila('Dirección', x.direccion) + fila('Nota', x.nota) + fila('Registrado', fmtDate(x.fecha_registro))
     : fila('Nombre', x.nombre) + fila('Teléfono', x.telefono) + fila('Nota', x.nota) + fila('Registrado', fmtDate(x.fecha_registro));
@@ -198,7 +256,7 @@ function openEntregaDetalle(tipo, id, onChange){
   document.getElementById('ent-cerrar').onclick = closeModal;
   document.getElementById('ent-editar').onclick = ()=>{
     closeModal();
-    (tipo==='destinatarios' ? openDestinatarioFormModal : openMensajeroFormModal)(x.id, ()=>onChange && onChange());
+    (tipo==='destinatarios' ? openDestinatarioFormModal : (tipo==='mensajeros' ? openMensajeroFormModal : openCompradorFormModal))(x.id, ()=>onChange && onChange());
   };
   document.getElementById('ent-eliminar').onclick = ()=>{
     closeModal();
@@ -210,6 +268,26 @@ function openEntregaDetalle(tipo, id, onChange){
 }
 
 /* ---- Selectores (para el envío y para "Enviar al mensajero") ---- */
+function openSelectorComprador(onPick){
+  function lista(filtro){
+    let items=compradoresActivos().filter(c=>coincideBusqueda(c.nombre,filtro));
+    if(normalizarTexto(filtro)) items.sort((a,b)=>rangoCoincidencia(a.nombre,filtro)-rangoCoincidencia(b.nombre,filtro)||a.nombre.localeCompare(b.nombre,'es'));
+    if(!items.length) return `<div class="empty-state"><div class="ei">🔍</div>${normalizarTexto(filtro)?'Sin resultados':'Aún no hay compradores registrados'}</div>`;
+    return items.map(c=>`<div class="list-item" data-pick="${c.id}"><div class="avatar">${initials(c.nombre)}</div><div class="li-main"><div class="li-title">${escapeHtml(c.nombre)}</div><div class="li-sub">${escapeHtml(c.nombre_completo||c.telefono||'')}</div></div></div>`).join('');
+  }
+  openModal(`
+    <div class="modal-title">Seleccionar comprador</div>
+    <div class="search-wrap" style="margin-top:12px;"><span class="search-icon">🔍</span><input type="text" id="sel-comprador-search" placeholder="Buscar comprador por nombre..." autocomplete="off"></div>
+    <button class="btn btn-outline btn-block" id="sel-comprador-nuevo" style="margin-bottom:10px;">➕ Nuevo comprador</button>
+    <div id="sel-comprador-list">${lista('')}</div>
+  `);
+  const listEl=document.getElementById('sel-comprador-list');
+  function enlazar(){listEl.querySelectorAll('[data-pick]').forEach(el=>{el.onclick=()=>{const c=compradorActivoPorId(Number(el.dataset.pick));if(!c)return;closeModal();onPick(c);};});}
+  document.getElementById('sel-comprador-search').addEventListener('input',e=>{listEl.innerHTML=lista(e.target.value);enlazar();});
+  document.getElementById('sel-comprador-nuevo').onclick=()=>openCompradorFormModal(null,c=>{closeModal();onPick(c);});
+  enlazar();setTimeout(()=>document.getElementById('sel-comprador-search')?.focus(),150);
+}
+
 function openSelectorEntrega(tipo, onPick){
   const cfg = ENTREGAS_TIPOS[tipo];
   function lista(filtro){

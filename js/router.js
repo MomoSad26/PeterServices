@@ -5,7 +5,7 @@ const TITLES = {
   panel:'Panel', busqueda:'Buscar', clientes:'Clientes', envio:'Nuevo envío', trabajadores:'Trabajadores',
   'precio-especial':'Precio especial', historial:'Historial de envíos',
   compras:'Compras', ventas:'Ventas', gastos:'Gastos', 'in-out':'In/Out',
-  balance:'Balance', respaldos:'Respaldos', deudas:'Deudas', ajustes:'Ajustes', entregas:'Entregas'
+  transferencias:'Transferencias Internas', balance:'Balance', respaldos:'Respaldos', deudas:'Deudas', ajustes:'Ajustes', entregas:'Entregas'
 };
 
 function parseHash(){
@@ -67,6 +67,7 @@ function route(){
     case 'compras': renderComprasList(content); break;
     case 'gastos': renderGastosList(content); break;
     case 'in-out': renderInOut(content); break;
+    case 'transferencias': renderTransferencias(content); break;
     case 'balance': renderBalance(content); break;
     case 'respaldos': renderRespaldos(content); break;
     case 'deudas': renderDeudas(content, param); break;

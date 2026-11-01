@@ -77,6 +77,12 @@ function computeFilteredBalance(period){
     }
   });
 
+  // TRANSFERENCIAS INTERNAS: salida en origen y entrada en destino.
+  (DB.transferencias||[]).filter(t=>inRange(t.fecha_hora)).forEach(t=>{
+    add(t.divisa_origen,-Number(t.cantidad_origen||0));
+    add(t.divisa_destino,Number(t.cantidad_destino||0));
+  });
+
   // GASTOS
   DB.gastos.filter(g => inRange(g.fecha_hora)).forEach(g => {
     add(g.divisa, -Number(g.cantidad || 0));
@@ -328,6 +334,14 @@ function movimientosDeDivisa(nombre){
   });
 
   // =====================================================
+  // TRANSFERENCIAS INTERNAS
+  // =====================================================
+  (DB.transferencias||[]).forEach(t=>{
+    if(t.divisa_origen===nombre) mov.push({fecha:t.fecha_hora,tipo:'Transferencia',concepto:`Transferencia a ${t.divisa_destino}`,monto:-Number(t.cantidad_origen||0),origen:'transferencia',origenId:t.id});
+    if(t.divisa_destino===nombre) mov.push({fecha:t.fecha_hora,tipo:'Transferencia',concepto:`Transferencia desde ${t.divisa_origen}`,monto:Number(t.cantidad_destino||0),origen:'transferencia',origenId:t.id});
+  });
+
+  // =====================================================
   // GASTOS
   // =====================================================
   DB.gastos.forEach(g=>{
@@ -425,7 +439,7 @@ function movimientosDeDivisa(nombre){
   // =====================================================
   // ORDENAR Y CALCULAR SALDO ACUMULADO
   // =====================================================
-  mov.sort((a,b) => b.fecha - a.fecha);
+  mov.sort((a,b) => (Number(b.fecha||0)-Number(a.fecha||0)) || (Number(b.origenId||0)-Number(a.origenId||0)));
   const divisaObj = findDivisa(nombre);
   let saldoActual = divisaObj ? divisaObj.saldo : 0;
   mov.forEach(m => {
@@ -537,7 +551,8 @@ function irADetalleOriginal(origen, origenId){
     (origen==='compra' && DB.compras.some(x=>x.id===origenId)) ||
     (origen==='gasto'  && DB.gastos.some(x=>x.id===origenId)) ||
     (origen==='in_out' && DB.in_out.some(x=>x.id===origenId)) ||
-    (origen==='deuda'  && DB.deudas.some(x=>x.id===origenId))
+    (origen==='deuda'  && DB.deudas.some(x=>x.id===origenId)) ||
+    (origen==='transferencia' && (DB.transferencias||[]).some(x=>x.id===origenId))
   );
   if(!existe){
     alertDialog('Registro no encontrado', 'No se pudo encontrar el registro original. Es posible que haya sido eliminado.');
@@ -557,6 +572,7 @@ function irADetalleOriginal(origen, origenId){
     case 'gasto':  openGastoDetalle(origenId, route); break;
     case 'in_out': openInOutDetalle(origenId, route); break;
     case 'deuda':  openDeudaDetalle(origenId, route); break;
+    case 'transferencia': openTransferenciaDetalle(origenId,route); break;
   }
 }
 

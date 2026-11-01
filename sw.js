@@ -1,4 +1,4 @@
-const CACHE = 'remesas-v27';
+const CACHE = 'remesas-v29';
 const FILES = [
   './',
   './index.html',
@@ -17,6 +17,8 @@ const FILES = [
   './js/paginacion.js',
   './js/historial.js',
   './js/movimientos.js',
+  './js/transferencias.js',
+  './js/importacion.js',
   './js/balance.js',
   './js/balance-reorder.js',
   './js/respaldos.js',

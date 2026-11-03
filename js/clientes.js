@@ -212,7 +212,7 @@ function renderClienteDetalle(content, id){
           <div class="avatar">${e.tipo==='precio_especial'?'⭐':'📤'}</div>
           <div class="li-main">
             <div class="li-title">${fmtDateShort(e.fecha_hora)} · ${fmtMoney(e.cantidad_enviada)} ${escapeHtml(e.moneda)}</div>
-            <div class="li-sub">Ganancia: ${fmtMoney(envioGananciaMostrada(e))} ${escapeHtml(e.divisa_ganancia)}</div>
+            <div class="li-sub">Ganancia: ${fmtMoney(envioGananciaMostrada(e))} ${escapeDivisa(e.divisa_ganancia)}</div>
           </div>
         </div>`).join('') : emptyState('📤','Este cliente aún no ha realizado envíos')}
     </div>

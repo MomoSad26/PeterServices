@@ -73,7 +73,34 @@ function copiaParaDuplicar(registro){
 }
 
 /* ---------------------------------------------------------------------- *
- * 14a. MENÚ 7 — VENTAS (con switch "deuda pendiente")
+ * OPERACIONES — Compras y Ventas comparten la ruta, no los datos ni la lógica.
+ * ---------------------------------------------------------------------- */
+let operacionesTab = 'compra';
+function renderOperaciones(content){
+  content.innerHTML = `
+    <div class="tabs" id="operaciones-tabs" role="tablist" aria-label="Operaciones">
+      <div class="tab ${operacionesTab==='compra'?'active':''}" data-tab="compra" role="tab" aria-selected="${operacionesTab==='compra'}">🛒 Compra</div>
+      <div class="tab ${operacionesTab==='ventas'?'active':''}" data-tab="ventas" role="tab" aria-selected="${operacionesTab==='ventas'}">🛍️ Ventas</div>
+    </div>
+    <div id="operaciones-contenido"></div>
+  `;
+  const title=document.getElementById('topbar-title');
+  if(title) title.textContent=operacionesTab==='ventas'?'Ventas':'Compra';
+  const inner=document.getElementById('operaciones-contenido');
+  if(operacionesTab==='ventas') renderVentasList(inner);
+  else renderComprasList(inner);
+  document.querySelectorAll('#operaciones-tabs .tab').forEach(tab=>{
+    tab.onclick=()=>{
+      const siguiente=tab.dataset.tab==='ventas'?'ventas':'compra';
+      if(siguiente===operacionesTab) return;
+      operacionesTab=siguiente;
+      renderOperaciones(content);
+    };
+  });
+}
+
+/* ---------------------------------------------------------------------- *
+ * 14a. LISTADO DE VENTAS (con switch "deuda pendiente")
  * ---------------------------------------------------------------------- */
 function renderVentasList(content){
   renderListadoPaginado(content, {
@@ -95,7 +122,7 @@ function ventaRowHtml(v){
     <div class="list-item" data-id="${v.id}">
       <div class="avatar">💱</div>
       <div class="li-main">
-        <div class="li-title">${comprador?`${escapeHtml(comprador)} · `:''}${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}</div>
+        <div class="li-title">${comprador?`${escapeHtml(comprador)} · `:''}${fmtMoney(v.cantidad_vendida)} ${escapeDivisa(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeDivisa(v.divisa_recibida)}</div>
         <div class="li-sub">${fmtDate(v.fecha_hora)} · ${ventaEstado(v)}</div>
       </div>
       <button class="icon-action-btn edit-btn" data-id="${v.id}" aria-label="Editar venta">✏️</button>
@@ -206,8 +233,8 @@ function openVentaDetalle(id, onChange, opts={}){
   openModal(`
     <div class="modal-title">Detalle de venta</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
-      <div class="sumrow"><span class="k">Cantidad vendida</span><span class="v">${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)}</span></div>
-      <div class="sumrow"><span class="k">Cantidad recibida</span><span class="v">${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}</span></div>
+      <div class="sumrow"><span class="k">Cantidad vendida</span><span class="v">${fmtMoney(v.cantidad_vendida)} ${escapeDivisa(v.divisa_vendida)}</span></div>
+      <div class="sumrow"><span class="k">Cantidad recibida</span><span class="v">${fmtMoney(v.cantidad_recibida)} ${escapeDivisa(v.divisa_recibida)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(v.fecha_hora)}</span></div>
       <div class="sumrow"><span class="k">Estado</span><span class="v">${ventaEstado(v)}</span></div>
       ${nombreCompradorDeVenta(v)?`<div class="sumrow"><span class="k">Comprador</span><span class="v">${escapeHtml(nombreCompradorDeVenta(v))}${nombreCompletoCompradorDeVenta(v)?` · ${escapeHtml(nombreCompletoCompradorDeVenta(v))}`:''}</span></div>`:''}
@@ -230,7 +257,7 @@ function openVentaDetalle(id, onChange, opts={}){
   document.getElementById('vd-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('vd-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar la venta de ${fmtMoney(v.cantidad_vendida)} ${escapeHtml(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeHtml(v.divisa_recibida)}?`, ()=> eliminarConDeshacer('Venta eliminada', ()=>{
+    confirmDialog(`¿Eliminar la venta de ${fmtMoney(v.cantidad_vendida)} ${escapeDivisa(v.divisa_vendida)} → ${fmtMoney(v.cantidad_recibida)} ${escapeDivisa(v.divisa_recibida)}?`, ()=> eliminarConDeshacer('Venta eliminada', ()=>{
       adjustBalance(v.divisa_vendida, v.cantidad_vendida);
       if(v.registra_deuda){
         const deudaAsociada = DB.deudas.find(d=>d.origen==='venta' && d.origen_id===v.id);
@@ -367,7 +394,7 @@ function compraRowHtml(c){
     <div class="list-item" data-id="${c.id}">
       <div class="avatar">🛒</div>
       <div class="li-main">
-        <div class="li-title">${fmtMoney(c.cantidad_pagada)} ${escapeHtml(c.divisa_pagada)} → ${fmtMoney(c.cantidad_comprada)} ${escapeHtml(c.divisa_comprada)}</div>
+        <div class="li-title">${fmtMoney(c.cantidad_pagada)} ${escapeDivisa(c.divisa_pagada)} → ${fmtMoney(c.cantidad_comprada)} ${escapeDivisa(c.divisa_comprada)}</div>
         <div class="li-sub">${fmtDate(c.fecha_hora)} ${c.registra_deuda?'· Pago pendiente':''}</div>
       </div>
       <button class="icon-action-btn edit-btn" data-id="${c.id}" aria-label="Editar compra">✏️</button>
@@ -450,8 +477,8 @@ function openCompraDetalle(id, onChange, opts={}){
   openModal(`
     <div class="modal-title">Detalle de compra</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
-      <div class="sumrow"><span class="k">Cantidad comprada</span><span class="v">${fmtMoney(c.cantidad_comprada)} ${escapeHtml(c.divisa_comprada)}</span></div>
-      <div class="sumrow"><span class="k">Cantidad pagada</span><span class="v">${fmtMoney(c.cantidad_pagada)} ${escapeHtml(c.divisa_pagada)}</span></div>
+      <div class="sumrow"><span class="k">Cantidad comprada</span><span class="v">${fmtMoney(c.cantidad_comprada)} ${escapeDivisa(c.divisa_comprada)}</span></div>
+      <div class="sumrow"><span class="k">Cantidad pagada</span><span class="v">${fmtMoney(c.cantidad_pagada)} ${escapeDivisa(c.divisa_pagada)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(c.fecha_hora)}</span></div>
       <div class="sumrow"><span class="k">Pago pendiente</span><span class="v">${c.registra_deuda?'Sí — ver en Deudas':'No'}</span></div>
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(c.nota || 'Sin nota')}</span></div>
@@ -473,7 +500,7 @@ function openCompraDetalle(id, onChange, opts={}){
   document.getElementById('cd2-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('cd2-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar la compra de ${fmtMoney(c.cantidad_pagada)} ${escapeHtml(c.divisa_pagada)} → ${fmtMoney(c.cantidad_comprada)} ${escapeHtml(c.divisa_comprada)}?`, ()=> eliminarConDeshacer('Compra eliminada', ()=>{
+    confirmDialog(`¿Eliminar la compra de ${fmtMoney(c.cantidad_pagada)} ${escapeDivisa(c.divisa_pagada)} → ${fmtMoney(c.cantidad_comprada)} ${escapeDivisa(c.divisa_comprada)}?`, ()=> eliminarConDeshacer('Compra eliminada', ()=>{
       adjustBalance(c.divisa_comprada, -c.cantidad_comprada);
       if(c.registra_deuda){
         const deudaAsociada = DB.deudas.find(d=>d.origen==='compra' && d.origen_id===c.id);
@@ -602,7 +629,7 @@ function gastoRowHtml(g){
       </div>
       <div class="li-trail">
         <div class="li-amount neg">-${fmtMoney(g.cantidad)}</div>
-        <div class="li-sub">${escapeHtml(g.divisa)}</div>
+        <div class="li-sub">${escapeDivisa(g.divisa)}</div>
       </div>
       <button class="icon-action-btn edit-btn" data-id="${g.id}" aria-label="Editar gasto">✏️</button>
     </div>`;
@@ -659,7 +686,7 @@ function openGastoDetalle(id, onChange, opts={}){
     <div class="modal-title">Detalle de gasto</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
       <div class="sumrow"><span class="k">Concepto</span><span class="v">${escapeHtml(g.concepto)}</span></div>
-      <div class="sumrow"><span class="k">Cantidad</span><span class="v">${fmtMoney(g.cantidad)} ${escapeHtml(g.divisa)}</span></div>
+      <div class="sumrow"><span class="k">Cantidad</span><span class="v">${fmtMoney(g.cantidad)} ${escapeDivisa(g.divisa)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(g.fecha_hora)}</span></div>
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(g.nota || 'Sin nota')}</span></div>
     </div>
@@ -680,7 +707,7 @@ function openGastoDetalle(id, onChange, opts={}){
   document.getElementById('gd-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('gd-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar el gasto "${escapeHtml(g.concepto)}" por ${fmtMoney(g.cantidad)} ${escapeHtml(g.divisa)}?`, ()=> eliminarConDeshacer('Gasto eliminado', ()=>{
+    confirmDialog(`¿Eliminar el gasto "${escapeHtml(g.concepto)}" por ${fmtMoney(g.cantidad)} ${escapeDivisa(g.divisa)}?`, ()=> eliminarConDeshacer('Gasto eliminado', ()=>{
       applyGastoBalance(g, -1);
       DB.gastos = DB.gastos.filter(x=>x.id!==id);
       save(); onChange && onChange();
@@ -761,7 +788,7 @@ function inOutRowHtml(io){
       </div>
       <div class="li-trail">
         <div class="li-amount ${esEntrada?'':'neg'}">${esEntrada?'+':'-'}${fmtMoney(io.cantidad)}</div>
-        <div class="li-sub">${escapeHtml(io.divisa)}</div>
+        <div class="li-sub">${escapeDivisa(io.divisa)}</div>
       </div>
       <button class="icon-action-btn edit-btn" data-id="${io.id}" aria-label="Editar movimiento">✏️</button>
     </div>`;
@@ -825,7 +852,7 @@ function openInOutDetalle(id, onChange, opts={}){
     <div class="modal-title">Detalle de movimiento</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;">
       <div class="sumrow"><span class="k">Tipo</span><span class="v">${esEntrada?'📥 Entrada':'📤 Salida'}</span></div>
-      <div class="sumrow"><span class="k">Cantidad</span><span class="v">${fmtMoney(io.cantidad)} ${escapeHtml(io.divisa)}</span></div>
+      <div class="sumrow"><span class="k">Cantidad</span><span class="v">${fmtMoney(io.cantidad)} ${escapeDivisa(io.divisa)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(io.fecha_hora)}</span></div>
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(io.nota || 'Sin nota')}</span></div>
     </div>
@@ -846,7 +873,7 @@ function openInOutDetalle(id, onChange, opts={}){
   document.getElementById('iod-close').onclick = volverDesdeDetalleMovimiento;
   document.getElementById('iod-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar el movimiento ${io.tipo==='entrada'?'📥 Entrada':'📤 Salida'} de ${fmtMoney(io.cantidad)} ${escapeHtml(io.divisa)}${io.nota ? ' ('+escapeHtml(io.nota)+')' : ''}?`, ()=> eliminarConDeshacer('Movimiento eliminado', ()=>{
+    confirmDialog(`¿Eliminar el movimiento ${io.tipo==='entrada'?'📥 Entrada':'📤 Salida'} de ${fmtMoney(io.cantidad)} ${escapeDivisa(io.divisa)}${io.nota ? ' ('+escapeHtml(io.nota)+')' : ''}?`, ()=> eliminarConDeshacer('Movimiento eliminado', ()=>{
       adjustBalance(io.divisa, esEntrada ? -io.cantidad : io.cantidad);
       DB.in_out = DB.in_out.filter(x=>x.id!==id);
       save(); onChange && onChange();

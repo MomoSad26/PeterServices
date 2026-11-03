@@ -33,7 +33,7 @@ function panelTextoMonto(monto){
 }
 function panelValorPorDivisa(grupos){
   if(!grupos.length) return 'Sin movimientos';
-  const primeros = grupos.slice(0,2).map(g=>`${panelTextoMonto(g.monto)} ${escapeHtml(g.divisa)}`);
+  const primeros = grupos.slice(0,2).map(g=>`${panelTextoMonto(g.monto)} ${escapeDivisa(g.divisa)}`);
   if(grupos.length>2) primeros.push(`+${grupos.length-2} más ›`);
   return primeros.join(' · ');
 }
@@ -131,9 +131,11 @@ function renderPanel(content, conservarDia=false){
       }else if(accion==='gastos'){
         panelIrA('#/gastos');
       }else if(accion==='compras'){
-        panelIrA('#/compras');
+        operacionesTab='compra';
+        panelIrA('#/operaciones');
       }else if(accion==='ventas'){
-        panelIrA('#/ventas');
+        operacionesTab='ventas';
+        panelIrA('#/operaciones');
       }else if(accion==='respaldos'){
         panelIrA('#/respaldos');
       }

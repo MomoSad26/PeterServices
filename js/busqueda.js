@@ -8,8 +8,8 @@ const BUSQUEDA_RUTAS = {
   clientes:'clientes',
   trabajadores:'trabajadores',
   envios:'historial',
-  ventas:'ventas',
-  compras:'compras',
+  ventas:'operaciones',
+  compras:'operaciones',
   gastos:'gastos',
   deudas:'deudas',
   transferencias:'transferencias'
@@ -24,7 +24,7 @@ function sincronizarFiltroBusquedaRuta(view,param){
     busquedaFiltroLista=null;
     return;
   }
-  const seccion=BUSQUEDA_RUTAS[view];
+  const seccion=view==='operaciones' ? (operacionesTab==='ventas'?'ventas':'compras') : BUSQUEDA_RUTAS[view];
   if(seccion){
     const m=/^busqueda\/(.+)$/.exec(String(param||''));
     if(m){
@@ -91,7 +91,13 @@ function busquedaMontoCoincide(monto,consulta){
 }
 function busquedaInfoRegistro(seccion,r){
   const info={textos:[],fechas:[],montos:[]};
-  const textos=(...valores)=>info.textos.push(...valores.filter(v=>v!==undefined&&v!==null).map(v=>String(v)));
+  const textos=(...valores)=>{
+    valores.filter(v=>v!==undefined&&v!==null).forEach(v=>{
+      const texto=String(v);info.textos.push(texto);
+      const d=(DB.divisas||[]).find(x=>x.nombre===texto);
+      if(d) info.textos.push(nombreDivisaVisible(d.nombre));
+    });
+  };
   const fechas=(...valores)=>info.fechas.push(...valores.filter(v=>v!==undefined&&v!==null));
   const montos=(...valores)=>info.montos.push(...valores.filter(v=>v!==undefined&&v!==null).map(Number).filter(Number.isFinite));
   if(seccion==='clientes'){
@@ -148,34 +154,34 @@ function busquedaDetalleRegistro(seccion,r){
     return [r.telefono,r.activo?'':'Inactivo'].filter(Boolean).join(' · ');
   }
   if(seccion==='envios'){
-    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_enviada)} ${escapeHtml(r.moneda)} · Ganancia: ${fmtMoney(envioGananciaMostrada(r))} ${escapeHtml(r.divisa_ganancia||'')}${archivado}`;
+    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_enviada)} ${escapeHtml(r.moneda)} · Ganancia: ${fmtMoney(envioGananciaMostrada(r))} ${escapeDivisa(r.divisa_ganancia||'')}${archivado}`;
   }
   if(seccion==='ventas'){
-    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_vendida)} ${escapeHtml(r.divisa_vendida)} → ${fmtMoney(r.cantidad_recibida)} ${escapeHtml(r.divisa_recibida)} · ${escapeHtml(ventaEstado(r))}${archivado}`;
+    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_vendida)} ${escapeDivisa(r.divisa_vendida)} → ${fmtMoney(r.cantidad_recibida)} ${escapeDivisa(r.divisa_recibida)} · ${escapeHtml(ventaEstado(r))}${archivado}`;
   }
   if(seccion==='compras'){
-    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_pagada)} ${escapeHtml(r.divisa_pagada)} → ${fmtMoney(r.cantidad_comprada)} ${escapeHtml(r.divisa_comprada)}${archivado}`;
+    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_pagada)} ${escapeDivisa(r.divisa_pagada)} → ${fmtMoney(r.cantidad_comprada)} ${escapeDivisa(r.divisa_comprada)}${archivado}`;
   }
   if(seccion==='gastos'){
-    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad)} ${escapeHtml(r.divisa)}${archivado}`;
+    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad)} ${escapeDivisa(r.divisa)}${archivado}`;
   }
   if(seccion==='transferencias'){
-    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_origen)} ${escapeHtml(r.divisa_origen)} → ${fmtMoney(r.cantidad_destino)} ${escapeHtml(r.divisa_destino)}${r.nota?' · '+escapeHtml(r.nota):''}`;
+    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_origen)} ${escapeDivisa(r.divisa_origen)} → ${fmtMoney(r.cantidad_destino)} ${escapeDivisa(r.divisa_destino)}${r.nota?' · '+escapeHtml(r.nota):''}`;
   }
   if(seccion==='deudas'){
     const estado=r.estado==='pendiente'?'Pendiente':(r.estado==='pagado'?'Pagado':'Cobrado');
-    return `${fmtDateShort(r.fecha)} · ${fmtMoney(r.monto)} ${escapeHtml(r.divisa)} · ${estado}`;
+    return `${fmtDateShort(r.fecha)} · ${fmtMoney(r.monto)} ${escapeDivisa(r.divisa)} · ${estado}`;
   }
   return '';
 }
 function busquedaTituloRegistro(seccion,r){
   if(seccion==='clientes'||seccion==='trabajadores') return r.nombre||'(sin nombre)';
   if(seccion==='envios') return entityNameForEnvio(r);
-  if(seccion==='ventas') return `${fmtMoney(r.cantidad_vendida)} ${r.divisa_vendida} → ${fmtMoney(r.cantidad_recibida)} ${r.divisa_recibida}`;
-  if(seccion==='compras') return `${fmtMoney(r.cantidad_pagada)} ${r.divisa_pagada} → ${fmtMoney(r.cantidad_comprada)} ${r.divisa_comprada}`;
+  if(seccion==='ventas') return `${fmtMoney(r.cantidad_vendida)} ${nombreDivisaVisible(r.divisa_vendida)} → ${fmtMoney(r.cantidad_recibida)} ${nombreDivisaVisible(r.divisa_recibida)}`;
+  if(seccion==='compras') return `${fmtMoney(r.cantidad_pagada)} ${nombreDivisaVisible(r.divisa_pagada)} → ${fmtMoney(r.cantidad_comprada)} ${nombreDivisaVisible(r.divisa_comprada)}`;
   if(seccion==='gastos') return r.concepto||'Gasto';
   if(seccion==='deudas') return r.comprador_nombre||r.persona||'Deuda';
-  if(seccion==='transferencias') return `${fmtMoney(r.cantidad_origen)} ${r.divisa_origen} → ${fmtMoney(r.cantidad_destino)} ${r.divisa_destino}`;
+  if(seccion==='transferencias') return `${fmtMoney(r.cantidad_origen)} ${nombreDivisaVisible(r.divisa_origen)} → ${fmtMoney(r.cantidad_destino)} ${nombreDivisaVisible(r.divisa_destino)}`;
   return 'Registro';
 }
 function busquedaDefiniciones(){
@@ -226,6 +232,8 @@ function busquedaVerTodos(seccion){
   if(seccion==='envios'){
     historialFilters={q:'',tipo:'Todos',fecha:'Todo',fechaDesde:null,fechaHasta:null,forma:'Todas',divisa:'Todas'};
   }
+  if(seccion==='ventas') operacionesTab='ventas';
+  else if(seccion==='compras') operacionesTab='compra';
   const destino=`#/${ruta}/busqueda/${encodeURIComponent(consulta)}`;
   if(location.hash===destino) route();
   else location.hash=destino;

@@ -248,12 +248,12 @@ function showEnvioSummary(envio, entity, onSaved){
       <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(envio.cantidad_enviada)} ${escapeHtml(envio.moneda)}</span></div>
       <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(envio.precio)}</span></div>
       <div class="sumrow"><span class="k">Cantidad pagada</span><span class="v">${fmtMoney(envio.cantidad_pagada)}</span></div>
-      <div class="sumrow"><span class="k">Divisa de entrega</span><span class="v">${escapeHtml(envio.divisa_entrega)}</span></div>
+      <div class="sumrow"><span class="k">Divisa de entrega</span><span class="v">${escapeDivisa(envio.divisa_entrega)}</span></div>
       ${envio.destinatario_id!=null ? `<div class="sumrow"><span class="k">Destinatario</span><span class="v">${escapeHtml(envio.destinatario_nombre)}</span></div>` : ''}
       <div class="sumrow"><span class="k">Descontar ahora</span><span class="v">${envio.descuenta_ahora?'Sí':'No — queda pendiente en Deudas'}</span></div>
       <div class="sumrow"><span class="k">Cotizado a</span><span class="v">${envio.cotizado_a!==null?fmtMoney(envio.cotizado_a):'—'}</span></div>
       <div class="sumrow"><span class="k">Ganancia</span><span class="v">${fmtMoney(envio.ganancia)}</span></div>
-      <div class="sumrow"><span class="k">Divisa de ganancia</span><span class="v">${escapeHtml(envio.divisa_ganancia)}</span></div>
+      <div class="sumrow"><span class="k">Divisa de ganancia</span><span class="v">${escapeDivisa(envio.divisa_ganancia)}</span></div>
       <div class="sumrow"><span class="k">Forma de ganancia</span><span class="v">${escapeHtml(envio.forma_ganancia)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(envio.fecha_hora)}</span></div>
     </div>

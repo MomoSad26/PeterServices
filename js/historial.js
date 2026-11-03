@@ -79,7 +79,7 @@ function renderHistorial(content, presetParam){
       </select>
       <select id="h-divisa" class="picker">
         <option value="Todas" ${historialFilters.divisa==='Todas'?'selected':''}>Divisa: Todas</option>
-        ${DB.divisas.map(d=>`<option value="${escapeHtml(d.nombre)}" ${historialFilters.divisa===d.nombre?'selected':''}>${escapeHtml(d.nombre)}</option>`).join('')}
+        ${DB.divisas.map(d=>`<option value="${escapeHtml(d.nombre)}" ${historialFilters.divisa===d.nombre?'selected':''}>${escapeDivisa(d.nombre)}</option>`).join('')}
       </select>
     </div>
     <div id="h-list"></div>
@@ -161,7 +161,7 @@ function envioRowHtml(e){
       </div>
       <div class="li-trail">
         <div class="li-amount">+${fmtMoney(envioGananciaMostrada(e))}</div>
-        <div class="li-sub">${escapeHtml(e.divisa_ganancia)}</div>
+        <div class="li-sub">${escapeDivisa(e.divisa_ganancia)}</div>
       </div>
       <button class="icon-action-btn edit-btn" data-id="${e.id}" aria-label="Editar envío">✏️</button>
     </div>`;
@@ -179,11 +179,11 @@ function renderEnvioDetalle(content, id){
       <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(e.cantidad_enviada)} ${escapeHtml(e.moneda)}</span></div>
       <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(e.precio)}</span></div>
       <div class="sumrow"><span class="k">Cantidad pagada</span><span class="v">${fmtMoney(e.cantidad_pagada)}</span></div>
-      <div class="sumrow"><span class="k">Divisa de entrega</span><span class="v">${escapeHtml(e.divisa_entrega)}</span></div>
+      <div class="sumrow"><span class="k">Divisa de entrega</span><span class="v">${escapeDivisa(e.divisa_entrega)}</span></div>
       ${e.tipo!=='precio_especial' ? `<div class="sumrow"><span class="k">Descuento</span><span class="v">${envioDescuentaAhora(e)?'Inmediato':'Pendiente en Deudas'}</span></div>` : ''}
       <div class="sumrow"><span class="k">Cotizado a</span><span class="v">${e.cotizado_a!==null && e.cotizado_a!==undefined ? fmtMoney(e.cotizado_a) : '—'}</span></div>
       <div class="sumrow"><span class="k">Ganancia</span><span class="v">${fmtMoney(envioGananciaMostrada(e))}</span></div>
-      <div class="sumrow"><span class="k">Divisa de ganancia</span><span class="v">${escapeHtml(e.divisa_ganancia)}</span></div>
+      <div class="sumrow"><span class="k">Divisa de ganancia</span><span class="v">${escapeDivisa(e.divisa_ganancia)}</span></div>
       <div class="sumrow"><span class="k">Forma de ganancia</span><span class="v">${escapeHtml(e.forma_ganancia)}</span></div>
       ${e.destinatario_id!=null ? `<div class="sumrow"><span class="k">Destinatario</span><span class="v">${escapeHtml(destinatarioNombreDeEnvio(e))}</span></div>` : ''}
       ${e.mensajero_notificado_fecha ? `<div class="sumrow"><span class="k">Mensajero notificado</span><span class="v">${escapeHtml(mensajeroNotificadoTexto(e))}</span></div>` : ''}

@@ -1,5 +1,13 @@
 # Historial breve y línea base
 
+## 2026-11-03 — Operaciones unificadas y nombres visibles de divisas
+
+- Compras y Ventas comparten el menú y la ruta `#/operaciones` con pestañas en memoria; sus tablas, formularios, efectos de balance, historial y secciones del buscador permanecen separados. Se conservan alias para enlaces `#/compras` y `#/ventas`.
+- Las divisas distinguen `nombre` interno fijo de `nombre_visible` editable. Los selectores conservan el nombre interno en el valor y presentan el nombre visible; el cambio se confirma desde Balance → Editar divisa.
+- Las bases locales anteriores reciben `nombre_visible = nombre` al cargarse. La importación respeta el nombre visible del respaldo si no existe personalización local ni colisión; el respaldo JSON incluye ambos campos sin cambiar su formato.
+- Se incrementó la caché PWA a `remesas-v30`. No se modificaron datos de operaciones, identidad/firma Android ni workflow; no se compiló APK.
+
+
 ## 2026-11-01 — Compradores, deudas consolidadas y Transferencias Internas
 
 - Entregas incorpora la pestaña Compradores con ficha, búsqueda y desactivación reversible; Ventas permite asignar/cambiar comprador y conserva una copia histórica de los datos de contacto.

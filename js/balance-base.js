@@ -4,6 +4,21 @@
 function findDivisa(nombre){
   return DB.divisas.find(d => d.nombre === nombre);
 }
+// nombre es la clave persistida e inmutable; nombre_visible es solo presentación.
+function nombreDivisaVisible(nombreInterno){
+  const d=findDivisa(nombreInterno);
+  return d ? (typeof d.nombre_visible==='string' && d.nombre_visible.trim() ? d.nombre_visible : d.nombre) : (nombreInterno||'');
+}
+function escapeDivisa(nombreInterno){
+  return escapeHtml(nombreDivisaVisible(nombreInterno));
+}
+function textoDivisasVisibles(texto){
+  let salida=String(texto??'');
+  const divisas=(DB?.divisas||[]).filter(d=>d.nombre && d.nombre_visible && d.nombre!==d.nombre_visible)
+    .slice().sort((a,b)=>String(b.nombre).length-String(a.nombre).length);
+  divisas.forEach(d=>{ salida=salida.split(d.nombre).join(d.nombre_visible); });
+  return salida;
+}
 function adjustBalance(divisaNombre, delta){
   if(!divisaNombre || !delta) return;
   const d = findDivisa(divisaNombre);
@@ -152,10 +167,10 @@ function renumerarOrdenBalance(){
 function addDivisa(nombre){
   nombre = (nombre||'').trim();
   if(!nombre) return null;
-  let d = DB.divisas.find(x=>x.nombre.toLowerCase()===nombre.toLowerCase());
+  let d = DB.divisas.find(x=>normalizarTexto(x.nombre)===normalizarTexto(nombre) || normalizarTexto(x.nombre_visible||x.nombre)===normalizarTexto(nombre));
   if(d) return d;
   const ordenBalance = DB.divisas.length ? Math.max(...DB.divisas.map(ordenBalanceDeDivisa)) + 1 : 1;
-  d = {id:nextId('divisas'), nombre, simbolo:'', orden:DB.divisas.length+1, orden_balance:ordenBalance, saldo:0};
+  d = {id:nextId('divisas'), nombre, nombre_visible:nombre, simbolo:'', orden:DB.divisas.length+1, orden_balance:ordenBalance, saldo:0};
   DB.divisas.push(d); save();
   return d;
 }

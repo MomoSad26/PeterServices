@@ -312,7 +312,7 @@ function activarSugerencias(inputEl, {obtenerCandidatos, onElegir}){
  * ---------------------------------------------------------------------- */
 function divisaOptionsHtml(selected){
   return DB.divisas.slice().sort((a,b)=>(a.orden||0)-(b.orden||0))
-    .map(d=>`<option value="${escapeHtml(d.nombre)}" ${d.nombre===selected?'selected':''}>${escapeHtml(d.nombre)}</option>`).join('')
+    .map(d=>`<option value="${escapeHtml(d.nombre)}" ${(d.nombre===selected || normalizarTexto(nombreDivisaVisible(d.nombre))===normalizarTexto(selected))?'selected':''}>${escapeDivisa(d.nombre)}</option>`).join('')
     + `<option value="__add__">➕ Agregar divisa...</option>`;
 }
 function monedaOptionsHtml(selected){

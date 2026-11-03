@@ -25,14 +25,14 @@ function defaultDB(){
   const now = Date.now();
   return {
     divisas: [
-      {id:1, nombre:'Zelle', simbolo:'$', orden:1, saldo:0},
-      {id:2, nombre:'USD', simbolo:'$', orden:2, saldo:0},
-      {id:3, nombre:'CUP efectivo', simbolo:'$', orden:3, saldo:0},
-      {id:4, nombre:'CUP transferencia', simbolo:'$', orden:4, saldo:0},
-      {id:5, nombre:'USDT', simbolo:'$', orden:5, saldo:0},
-      {id:6, nombre:'MXN 🇲🇽', simbolo:'$', orden:6, saldo:0},
-      {id:7, nombre:'BRL 🇧🇷', simbolo:'R$', orden:7, saldo:0},
-      {id:8, nombre:'UYU 🇺🇾', simbolo:'$', orden:8, saldo:0},
+      {id:1, nombre:'Zelle', nombre_visible:'Zelle', simbolo:'$', orden:1, saldo:0},
+      {id:2, nombre:'USD', nombre_visible:'USD', simbolo:'$', orden:2, saldo:0},
+      {id:3, nombre:'CUP efectivo', nombre_visible:'CUP efectivo', simbolo:'$', orden:3, saldo:0},
+      {id:4, nombre:'CUP transferencia', nombre_visible:'CUP transferencia', simbolo:'$', orden:4, saldo:0},
+      {id:5, nombre:'USDT', nombre_visible:'USDT', simbolo:'$', orden:5, saldo:0},
+      {id:6, nombre:'MXN 🇲🇽', nombre_visible:'MXN 🇲🇽', simbolo:'$', orden:6, saldo:0},
+      {id:7, nombre:'BRL 🇧🇷', nombre_visible:'BRL 🇧🇷', simbolo:'R$', orden:7, saldo:0},
+      {id:8, nombre:'UYU 🇺🇾', nombre_visible:'UYU 🇺🇾', simbolo:'$', orden:8, saldo:0},
     ],
     clientes: [],
     trabajadores: [],
@@ -79,6 +79,17 @@ function normalizarNombresDeudasAutomaticas(){
         const persona = `${entityNameForEnvio(e)} – ${fmtMoney(e.cantidad_enviada)} ${e.moneda}`;
         if(d.persona!==persona){ d.persona = persona; changed = true; }
       }
+    }
+  });
+  if(changed) save();
+}
+
+function asegurarNombreVisibleDivisas(){
+  let changed=false;
+  (DB.divisas||[]).forEach(d=>{
+    if(typeof d.nombre_visible!=='string' || !d.nombre_visible.trim()){
+      d.nombre_visible=d.nombre;
+      changed=true;
     }
   });
   if(changed) save();

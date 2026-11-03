@@ -104,7 +104,7 @@ function openVerArchivadosModal(){
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
               <div style="min-width:0;">
                 <div style="font-weight:700;font-size:14px;">${escapeHtml(m.tipo)}</div>
-                <div class="subtle">${escapeHtml(m.concepto)}</div>
+                <div class="subtle">${escapeHtml(textoDivisasVisibles(m.concepto))}</div>
                 <div class="subtle">${fmtDate(m.fecha)}</div>
               </div>
               <button class="btn btn-outline btn-sm va-restaurar" data-key="${m.key}" data-id="${m.id}" style="flex:none;">↩️ Desarchivar</button>

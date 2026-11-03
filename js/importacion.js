@@ -39,6 +39,9 @@ function mergeImport(incoming){
     incoming[t].forEach(original=>{
       if(!original||typeof original!=='object')return;
       const r=JSON.parse(JSON.stringify(original));
+      if(t==='divisas'){
+        r.nombre_visible=(typeof r.nombre_visible==='string' && r.nombre_visible.trim())?r.nombre_visible.trim():r.nombre;
+      }
       if(t==='envios'){
         if(mapas.clientes.has(r.cliente_id))r.cliente_id=mapas.clientes.get(r.cliente_id);
         if(mapas.trabajadores.has(r.trabajador_id))r.trabajador_id=mapas.trabajadores.get(r.trabajador_id);
@@ -50,12 +53,32 @@ function mergeImport(incoming){
       const existing=DB[t].find(x=>clave(t,x)===k);
       if(existing){
         if(r.id!=null)mapas[t].set(r.id,existing.id);
-        if(['clientes','trabajadores','destinatarios','mensajeros','compradores'].includes(t)){
+        if(t==='divisas'){
+          const visibleImportado=r.nombre_visible||r.nombre;
+          const visibleLocal=existing.nombre_visible||existing.nombre;
+          const choca=(DB.divisas||[]).some(x=>x.id!==existing.id && norm(x.nombre_visible||x.nombre)===norm(visibleImportado));
+          // Una etiqueta importada solo reemplaza el valor heredado por defecto;
+          // una etiqueta personalizada local siempre prevalece.
+          if(visibleLocal===existing.nombre && visibleImportado && !choca && visibleImportado!==visibleLocal){
+            existing.nombre_visible=visibleImportado;
+            resumen.actualizados++;
+          }else resumen.omitidos++;
+        }else if(['clientes','trabajadores','destinatarios','mensajeros','compradores'].includes(t)){
           let changed=false;
           Object.keys(r).forEach(field=>{if(field!=='id'&&(existing[field]===undefined||existing[field]===null||existing[field]==='')&&r[field]!==undefined&&r[field]!==null&&r[field]!==''){existing[field]=r[field];changed=true;}});
           if(changed)resumen.actualizados++;else resumen.omitidos++;
         }else resumen.omitidos++;
         return;
+      }
+      if(t==='divisas'){
+        let visible=r.nombre_visible||r.nombre;
+        const ocupado=()=>DB.divisas.some(x=>norm(x.nombre_visible||x.nombre)===norm(visible));
+        if(ocupado()){
+          visible=r.nombre;
+          let sufijo=2;
+          while(ocupado()) visible=`${r.nombre} (${sufijo++})`;
+        }
+        r.nombre_visible=visible;
       }
       const oldId=r.id;r.id=nextId(t);DB[t].push(r);if(oldId!=null)mapas[t].set(oldId,r.id);resumen.insertados++;
       if(t==='divisas')divisasNuevas.add(r.nombre);

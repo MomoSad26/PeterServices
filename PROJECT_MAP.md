@@ -61,7 +61,7 @@ Los scripts se cargan en `index.html`, no usan `import/export`. Consulta la secu
 
 ## Navegación principal
 
-Las rutas se declaran en `index.html` y se resuelven en `js/router.js`: Panel, Clientes, Envío, Trabajadores, Entregas, Historial, Compras, Ventas, Gastos, In/Out, Transferencias Internas, Balance, Deudas, Respaldos y Ajustes. `Ajustes` debe permanecer como último elemento.
+Las rutas se declaran en `index.html` y se resuelven en `js/router.js`: Panel, Clientes, Envío, Trabajadores, Entregas, Historial, Operaciones (Compra/Ventas), Gastos, In/Out, Transferencias Internas, Balance, Deudas, Respaldos y Ajustes. `Ajustes` debe permanecer como último elemento.
 
 ## Android y publicación
 

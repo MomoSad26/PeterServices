@@ -23,7 +23,8 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 - La notificación a un mensajero desde un grupo de cobro prepara un WhatsApp con todas las divisas pendientes del comprador; la persona usuaria confirma el envío desde WhatsApp.
 - Los registros archivados se mantienen para cálculos y relaciones.
 - `js/fecha-previa.js` añade controles ◀/▶ de día a todos los campos editables `date` y `datetime-local`, incluidos los que aparecen dinámicamente en formularios y filtros. Emite eventos `input` y `change`; `datetime-local` conserva su hora y usa aritmética de calendario local.
-- La navegación se define en `index.html` y `js/router.js`; Ajustes permanece como último menú.
+- La navegación se define en `index.html` y `js/router.js`; Compras y Ventas comparten `#/operaciones` con pestaña en memoria (`operacionesTab`); Ajustes permanece como último menú.
+- Cada divisa conserva `nombre` como clave interna fija y `nombre_visible` como etiqueta editable. Las relaciones guardan siempre `nombre`; las pantallas y los selectores presentan `nombre_visible`.
 - Los respaldos cifrados manuales/automáticos se generan en `js/respaldos.js`; `js/importacion.js` implementa la fusión por tabla, remapeo de IDs y actualización incremental del balance. Las tablas ausentes en respaldos antiguos se ignoran y los formatos antiguos siguen siendo importables.
 
 ## Android y publicación

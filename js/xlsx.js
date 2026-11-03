@@ -145,7 +145,7 @@ function generarReporteEjecutivo(){
   rows.push([sb('Balance general por divisa')]);
   rows.push([sb('Divisa'), sb('Saldo')]);
   DB.divisas.slice().sort((a,b)=>(a.orden||0)-(b.orden||0)).forEach(d=>{
-    rows.push([s(d.nombre), n(d.saldo)]);
+    rows.push([s(nombreDivisaVisible(d.nombre)), n(d.saldo)]);
   });
   rows.push([]);
 
@@ -156,32 +156,32 @@ function generarReporteEjecutivo(){
     const entrega = Number(e.cantidad_pagada||0);
     const ganancia = Number(e.ganancia||0);
     if(envioDescuentaAhora(e)){
-      movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Entrega — ${entityNameForEnvio(e)}`, divisa:e.divisa_entrega, monto:-entrega});
+      movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Entrega — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_entrega), monto:-entrega});
       if(mismasDivisas(e.divisa_entrega, e.divisa_ganancia)){
-        movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Operación — ${entityNameForEnvio(e)}`, divisa:e.divisa_ganancia, monto:entrega+ganancia});
+        movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Operación — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_ganancia), monto:entrega+ganancia});
       } else {
-        movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Ganancia — ${entityNameForEnvio(e)}`, divisa:e.divisa_ganancia, monto:ganancia});
+        movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Ganancia — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_ganancia), monto:ganancia});
       }
     } else {
-      movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Ganancia — ${entityNameForEnvio(e)}`, divisa:e.divisa_ganancia, monto:ganancia});
+      movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Ganancia — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_ganancia), monto:ganancia});
     }
   });
   DB.deudas.forEach(d=>{
     if(d.tipo==='pagar_a' && d.origen==='envio' && d.estado==='pagado' && d.fecha_cierre){
-      movimientos.push({fecha:d.fecha_cierre, tipo:'Envío pagado', concepto:`Pago a ${d.persona}`, divisa:d.divisa, monto:-(d.monto||0)});
+      movimientos.push({fecha:d.fecha_cierre, tipo:'Envío pagado', concepto:`Pago a ${textoDivisasVisibles(d.persona)}`, divisa:nombreDivisaVisible(d.divisa), monto:-(d.monto||0)});
     }
   });
   DB.compras.filter(c=>!c.archivado).forEach(c=>{
-    movimientos.push({fecha:c.fecha_hora, tipo:'Compra', concepto:`${fmtMoney(c.cantidad_pagada)} ${c.divisa_pagada} → ${c.divisa_comprada}`, divisa:c.divisa_comprada, monto:c.cantidad_comprada});
+    movimientos.push({fecha:c.fecha_hora, tipo:'Compra', concepto:`${fmtMoney(c.cantidad_pagada)} ${nombreDivisaVisible(c.divisa_pagada)} → ${nombreDivisaVisible(c.divisa_comprada)}`, divisa:nombreDivisaVisible(c.divisa_comprada), monto:c.cantidad_comprada});
   });
   DB.ventas.filter(v=>!v.archivado).forEach(v=>{
-    movimientos.push({fecha:v.fecha_hora, tipo:'Venta', concepto:`${fmtMoney(v.cantidad_vendida)} ${v.divisa_vendida} → ${v.divisa_recibida}`, divisa:v.divisa_recibida, monto:v.registra_deuda?0:v.cantidad_recibida});
+    movimientos.push({fecha:v.fecha_hora, tipo:'Venta', concepto:`${fmtMoney(v.cantidad_vendida)} ${nombreDivisaVisible(v.divisa_vendida)} → ${nombreDivisaVisible(v.divisa_recibida)}`, divisa:nombreDivisaVisible(v.divisa_recibida), monto:v.registra_deuda?0:v.cantidad_recibida});
   });
   DB.gastos.filter(g=>!g.archivado).forEach(g=>{
-    movimientos.push({fecha:g.fecha_hora, tipo:'Gasto', concepto:g.concepto, divisa:g.divisa, monto:-g.cantidad});
+    movimientos.push({fecha:g.fecha_hora, tipo:'Gasto', concepto:textoDivisasVisibles(g.concepto), divisa:nombreDivisaVisible(g.divisa), monto:-g.cantidad});
   });
   DB.in_out.filter(io=>!io.archivado).forEach(io=>{
-    movimientos.push({fecha:io.fecha_hora, tipo:'In/Out', concepto: io.nota || (io.tipo==='entrada'?'Entrada manual':'Salida manual'), divisa:io.divisa, monto: io.tipo==='entrada'?io.cantidad:-io.cantidad});
+    movimientos.push({fecha:io.fecha_hora, tipo:'In/Out', concepto: textoDivisasVisibles(io.nota || (io.tipo==='entrada'?'Entrada manual':'Salida manual')), divisa:nombreDivisaVisible(io.divisa), monto: io.tipo==='entrada'?io.cantidad:-io.cantidad});
   });
   movimientos.sort((a,b)=>b.fecha-a.fecha).slice(0,10).forEach(m=>{
     rows.push([s(fmtDate(m.fecha)), s(m.tipo), s(m.concepto), s(m.divisa), n(m.monto)]);
@@ -193,35 +193,35 @@ function generarReporteEjecutivo(){
   rows.push([sb('Divisa'), sb('Total')]);
   const totEnvios = {};
   DB.envios.forEach(e=>{ totEnvios[e.divisa_ganancia] = (totEnvios[e.divisa_ganancia]||0) + envioGananciaMostrada(e); });
-  Object.keys(totEnvios).forEach(k=> rows.push([s(k), n(totEnvios[k])]));
+  Object.keys(totEnvios).forEach(k=> rows.push([s(nombreDivisaVisible(k)), n(totEnvios[k])]));
   rows.push([]);
 
   rows.push([sb('Compras — total comprado por divisa')]);
   rows.push([sb('Divisa'), sb('Total')]);
   const totCompras = {};
   DB.compras.forEach(c=>{ totCompras[c.divisa_comprada] = (totCompras[c.divisa_comprada]||0) + (c.cantidad_comprada||0); });
-  Object.keys(totCompras).forEach(k=> rows.push([s(k), n(totCompras[k])]));
+  Object.keys(totCompras).forEach(k=> rows.push([s(nombreDivisaVisible(k)), n(totCompras[k])]));
   rows.push([]);
 
   rows.push([sb('Ventas — total recibido por divisa')]);
   rows.push([sb('Divisa'), sb('Total')]);
   const totVentas = {};
   DB.ventas.forEach(v=>{ if(!v.registra_deuda) totVentas[v.divisa_recibida] = (totVentas[v.divisa_recibida]||0) + (v.cantidad_recibida||0); });
-  Object.keys(totVentas).forEach(k=> rows.push([s(k), n(totVentas[k])]));
+  Object.keys(totVentas).forEach(k=> rows.push([s(nombreDivisaVisible(k)), n(totVentas[k])]));
   rows.push([]);
 
   rows.push([sb('Gastos — total por divisa')]);
   rows.push([sb('Divisa'), sb('Total')]);
   const totGastos = {};
   DB.gastos.forEach(g=>{ totGastos[g.divisa] = (totGastos[g.divisa]||0) + (g.cantidad||0); });
-  Object.keys(totGastos).forEach(k=> rows.push([s(k), n(totGastos[k])]));
+  Object.keys(totGastos).forEach(k=> rows.push([s(nombreDivisaVisible(k)), n(totGastos[k])]));
   rows.push([]);
 
   rows.push([sb('In/Out — total neto por divisa')]);
   rows.push([sb('Divisa'), sb('Total')]);
   const totInOut = {};
   DB.in_out.forEach(io=>{ totInOut[io.divisa] = (totInOut[io.divisa]||0) + (io.tipo==='entrada'?io.cantidad:-io.cantidad); });
-  Object.keys(totInOut).forEach(k=> rows.push([s(k), n(totInOut[k])]));
+  Object.keys(totInOut).forEach(k=> rows.push([s(nombreDivisaVisible(k)), n(totInOut[k])]));
 
   const zipBytes = xlsxBuildFile(rows);
   const blob = new Blob([zipBytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});

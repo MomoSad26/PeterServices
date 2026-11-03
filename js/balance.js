@@ -163,7 +163,7 @@ function renderBalance(content){
       ? divisasConMovimiento.map(d=>{
           const v = totals[d.nombre] || 0;
           return `<div class="bal-card" data-divisa="${escapeHtml(d.nombre)}">
-            <div class="name">${escapeHtml(d.nombre)}</div>
+            <div class="name">${escapeDivisa(d.nombre)}</div>
             <div class="amt ${v<0?'neg':(v>0?'pos':'')}">
               ${v>0?'+':''}${fmtMoney(v)}
             </div>
@@ -179,12 +179,12 @@ function renderBalance(content){
     const el = document.getElementById('b-general');
     el.innerHTML = divisasOrdenadasParaBalance().map(d=>`
       <div class="bal-card" data-divisa="${escapeHtml(d.nombre)}">
-        <div class="name" data-action="ver">${escapeHtml(d.nombre)}</div>
+        <div class="name" data-action="ver">${escapeDivisa(d.nombre)}</div>
         <div style="display:flex;align-items:center;gap:8px;">
           <div class="amt ${d.saldo<0?'neg':''}" data-action="editar" style="flex:1;">${fmtMoney(d.saldo)}</div>
           <button class="eye-btn" data-action="historial" aria-label="Historial de movimientos">👁️</button>
         </div>
-        <div class="bal-edit" data-action="editar">✎ Editar saldo</div>
+        <div class="bal-edit" data-action="editar">✎ Editar divisa</div>
       </div>`).join('');
     el.querySelectorAll('.bal-card').forEach(card=>{
       const nombre = card.dataset.divisa;
@@ -193,7 +193,7 @@ function renderBalance(content){
         location.hash = '#/historial';
       };
       card.querySelectorAll('[data-action="editar"]').forEach(elx=>{
-        elx.onclick = ()=>editarSaldoDivisa(nombre, refreshGeneral);
+        elx.onclick = ()=>editarDivisa(nombre, refreshGeneral);
       });
       card.querySelector('[data-action="historial"]').onclick = ()=> openHistorialDivisa(nombre);
     });
@@ -235,7 +235,7 @@ function openEliminarDivisaModal(onDone){
       <div class="list-item" data-nombre="${escapeHtml(d.nombre)}">
         <div class="avatar">💱</div>
         <div class="li-main">
-          <div class="li-title">${escapeHtml(d.nombre)}</div>
+          <div class="li-title">${escapeDivisa(d.nombre)}</div>
         </div>
         <div class="li-trail">
           <div class="li-amount ${d.saldo<0?'neg':''}">${fmtMoney(d.saldo)}</div>
@@ -251,7 +251,7 @@ function openEliminarDivisaModal(onDone){
       closeModal();
       if(!d) return;
       if(round2(d.saldo) !== 0){
-        alertDialog('No se puede eliminar', `No se puede eliminar la divisa ${escapeHtml(nombre)} porque tiene un saldo de ${fmtMoney(d.saldo)}. Para eliminarla, primero debe ajustar el saldo a cero (ej: usando In/Out o editando manualmente el saldo).`);
+        alertDialog('No se puede eliminar', `No se puede eliminar la divisa ${escapeDivisa(nombre)} porque tiene un saldo de ${fmtMoney(d.saldo)}. Para eliminarla, primero debe ajustar el saldo a cero (ej: usando In/Out o editando manualmente el saldo).`);
         return;
       }
       const activos = contarRegistrosActivosDeDivisa(nombre);
@@ -273,7 +273,7 @@ function openEliminarDivisaModal(onDone){
         );
         return;
       }
-      confirmDialog(`¿Estás seguro de que deseas eliminar la divisa ${escapeHtml(nombre)}? Esta acción no se puede deshacer.`, ()=>{
+      confirmDialog(`¿Estás seguro de que deseas eliminar la divisa ${escapeDivisa(nombre)}? Esta acción no se puede deshacer.`, ()=>{
         DB.divisas = DB.divisas.filter(x=>x.nombre!==nombre);
         renumerarOrdenBalance();
         save(); toast('Divisa eliminada'); onDone && onDone();
@@ -436,6 +436,9 @@ function movimientosDeDivisa(nombre){
     }
   });
 
+  // Los conceptos pueden contener nombres internos dentro de frases históricas.
+  mov.forEach(m=>{m.concepto=textoDivisasVisibles(m.concepto);});
+
   // =====================================================
   // ORDENAR Y CALCULAR SALDO ACUMULADO
   // =====================================================
@@ -479,7 +482,7 @@ function openHistorialDivisa(nombre){
   const scrollAlAbrir = historialDivisaScrollPorDivisa[nombre] || 0;
 
   openModal(`
-    <div class="modal-title">Historial — ${escapeHtml(nombre)}</div>
+    <div class="modal-title">Historial — ${escapeDivisa(nombre)}</div>
     <div class="chip-row" id="hd-chips" style="margin-top:10px;">
       <div class="chip active" data-v="todos">📊 Todos</div>
       <div class="chip" data-v="ingresos">📈 Ingresos</div>
@@ -576,24 +579,44 @@ function irADetalleOriginal(origen, origenId){
   }
 }
 
-function editarSaldoDivisa(nombre, onDone){
-  const d = findDivisa(nombre);
+function editarDivisa(nombre, onDone){
+  const d=findDivisa(nombre);
   if(!d) return;
+  const nombreActual=nombreDivisaVisible(d.nombre);
   openModal(`
-    <div class="modal-title">Editar saldo — ${escapeHtml(nombre)}</div>
-    <label class="field-label">Nuevo saldo</label>
-    <input type="number" inputmode="decimal" step="0.01" id="es-valor" value="${d.saldo}">
+    <div class="modal-title">Editar divisa — ${escapeHtml(nombreActual)}</div>
+    <label class="field-label">Nombre de la divisa *</label>
+    <input type="text" id="edv-nombre" maxlength="30" value="${escapeHtml(nombreActual)}">
+    <label class="field-label">Saldo</label>
+    <input type="number" inputmode="decimal" step="0.01" id="edv-saldo" value="${d.saldo}">
+    <div id="edv-error" style="color:var(--red-text);font-size:13px;margin-top:10px;display:none;"></div>
     <div class="modal-actions">
-      <button class="btn btn-outline btn-block" id="es-cancel">Cancelar</button>
-      <button class="btn btn-primary btn-block" id="es-save">Guardar</button>
+      <button class="btn btn-outline btn-block" id="edv-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="edv-save">Guardar</button>
     </div>
   `, {center:true});
-  document.getElementById('es-cancel').onclick = closeModal;
-  document.getElementById('es-save').onclick = ()=>{
-    const val = parseFloat(document.getElementById('es-valor').value);
-    if(isNaN(val)){ toast('Ingrese un valor válido'); return; }
-    d.saldo = round2(val);
-    save(); closeModal(); toast('Saldo actualizado');
-    onDone && onDone();
+  document.getElementById('edv-cancel').onclick=closeModal;
+  document.getElementById('edv-save').onclick=()=>{
+    const nombreNuevo=document.getElementById('edv-nombre').value.trim();
+    const val=parseFloat(document.getElementById('edv-saldo').value);
+    const err=document.getElementById('edv-error');
+    let fallo='';
+    if(!nombreNuevo) fallo='El nombre de la divisa es obligatorio.';
+    else if(Array.from(nombreNuevo).length>30) fallo='El nombre no puede exceder los 30 caracteres.';
+    else if(DB.divisas.some(x=>x.id!==d.id && normalizarTexto(x.nombre_visible||x.nombre)===normalizarTexto(nombreNuevo))) fallo='Ya existe otra divisa con ese nombre visible.';
+    else if(!Number.isFinite(val)) fallo='Ingrese un saldo válido.';
+    if(fallo){err.textContent=fallo;err.style.display='block';return;}
+    const renombra=nombreNuevo!==nombreActual;
+    const guardar=()=>{
+      d.nombre_visible=nombreNuevo;
+      d.saldo=round2(val);
+      save();
+      closeModal();
+      toast(renombra?'Divisa actualizada':'Saldo actualizado');
+      onDone&&onDone();
+    };
+    if(renombra){
+      confirmDialog(`¿Renombrar "${escapeHtml(nombreActual)}" a "${escapeHtml(nombreNuevo)}"? Se actualizará el nombre visible en toda la app. Esta acción no se puede deshacer.`,guardar,{okLabel:'Renombrar',cancelLabel:'Cancelar',danger:false});
+    }else guardar();
   };
 }

@@ -29,7 +29,7 @@ function renderTransferencias(content){
       <div class="list-item" data-id="${t.id}">
         <div class="avatar">🔀</div>
         <div class="li-main">
-          <div class="li-title">${fmtMoney(t.cantidad_origen)} ${escapeHtml(t.divisa_origen)} → ${fmtMoney(t.cantidad_destino)} ${escapeHtml(t.divisa_destino)}</div>
+          <div class="li-title">${fmtMoney(t.cantidad_origen)} ${escapeDivisa(t.divisa_origen)} → ${fmtMoney(t.cantidad_destino)} ${escapeDivisa(t.divisa_destino)}</div>
           <div class="li-sub">${fmtDate(t.fecha_hora)}${t.nota?' · '+escapeHtml(t.nota):''}</div>
         </div>
       </div>`).join(''):emptyState('🔀','Aún no hay transferencias internas');
@@ -105,9 +105,9 @@ function openTransferenciaDetalle(id,onChange){
   openModal(`
     <div class="modal-title">🔀 Detalle de transferencia</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:8px;">
-      <div class="sumrow"><span class="k">Divisa origen</span><span class="v">${escapeHtml(t.divisa_origen)}</span></div>
+      <div class="sumrow"><span class="k">Divisa origen</span><span class="v">${escapeDivisa(t.divisa_origen)}</span></div>
       <div class="sumrow"><span class="k">Cantidad origen</span><span class="v">${fmtMoney(t.cantidad_origen)}</span></div>
-      <div class="sumrow"><span class="k">Divisa destino</span><span class="v">${escapeHtml(t.divisa_destino)}</span></div>
+      <div class="sumrow"><span class="k">Divisa destino</span><span class="v">${escapeDivisa(t.divisa_destino)}</span></div>
       <div class="sumrow"><span class="k">Cantidad destino</span><span class="v">${fmtMoney(t.cantidad_destino)}</span></div>
       <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(t.fecha_hora)}</span></div>
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(t.nota||'Sin nota')}</span></div>

@@ -4,13 +4,20 @@
 const TITLES = {
   panel:'Panel', busqueda:'Buscar', clientes:'Clientes', envio:'Nuevo envío', trabajadores:'Trabajadores',
   'precio-especial':'Precio especial', historial:'Historial de envíos',
-  compras:'Compras', ventas:'Ventas', gastos:'Gastos', 'in-out':'In/Out',
+  operaciones:'Compra', gastos:'Gastos', 'in-out':'In/Out',
   transferencias:'Transferencias Internas', balance:'Balance', respaldos:'Respaldos', deudas:'Deudas', ajustes:'Ajustes', entregas:'Entregas'
 };
 
 function parseHash(){
   const h = location.hash.replace(/^#\//,'') || 'balance';
-  const [view, ...rest] = h.split('/');
+  let [view, ...rest] = h.split('/');
+  // Alias compatibles: convertir enlaces antiguos y dejar la URL canónica.
+  if(view==='compras'||view==='ventas'){
+    operacionesTab=view==='ventas'?'ventas':'compra';
+    const canonical=`#/operaciones${rest.length?'/'+rest.join('/') : ''}`;
+    try{history.replaceState(history.state||{},'',location.pathname+location.search+canonical);}catch(e){}
+    view='operaciones';
+  }
   return {view: view || 'clientes', param: rest.join('/')};
 }
 
@@ -18,7 +25,7 @@ function setActiveMenu(view){
   document.querySelectorAll('.menu-list a').forEach(a=>{
     a.classList.toggle('active', a.dataset.view === view);
   });
-  document.getElementById('topbar-title').textContent = TITLES[view] || 'Remesas';
+  document.getElementById('topbar-title').textContent = view==='operaciones' ? (operacionesTab==='ventas'?'Ventas':'Compra') : (TITLES[view] || 'Remesas');
 }
 
 /* ---- Preservar posición de scroll al navegar entre vistas (rutas) ---- */
@@ -63,8 +70,7 @@ function route(){
     case 'entregas': renderEntregas(content, param); break;
     case 'historial': renderHistorial(content, param); break;
     case 'envio-detalle': renderEnvioDetalle(content, Number(param)); break;
-    case 'ventas': renderVentasList(content); break;
-    case 'compras': renderComprasList(content); break;
+    case 'operaciones': renderOperaciones(content); break;
     case 'gastos': renderGastosList(content); break;
     case 'in-out': renderInOut(content); break;
     case 'transferencias': renderTransferencias(content); break;
@@ -88,7 +94,7 @@ function route(){
 /* ---- Botón flotante "Registrar envío" ----
    Visible en las pantallas de listados. Si la pantalla ya tiene su propio
    botón "+" (Clientes, Trabajadores, Deudas), se coloca encima de él. */
-const VISTAS_CON_FAB_ENVIO = ['clientes','trabajadores','entregas','historial','compras','ventas','gastos','in-out','deudas'];
+const VISTAS_CON_FAB_ENVIO = ['clientes','trabajadores','entregas','historial','operaciones','gastos','in-out','deudas'];
 function actualizarFabEnvio(){
   const fab = document.getElementById('fab-envio');
   if(!fab) return;
@@ -225,6 +231,7 @@ async function bootstrap(){
     console.error('Error inicializando la base de datos, se usa una base nueva en memoria', e);
     DB = defaultDB();
   }
+  asegurarNombreVisibleDivisas();
   normalizarNombresDeudasAutomaticas();
 
   document.getElementById('btn-menu').addEventListener('click', openSideMenu);

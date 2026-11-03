@@ -166,7 +166,7 @@ function renderDeudas(content, presetParam){
         <div class="card" style="padding:12px 14px;margin-bottom:10px;">
           <div class="subtle" style="margin-bottom:4px;">${deudasTab==='pagar_a'?'Total por pagar':'Total por cobrar'}</div>
           <div style="font-weight:800;font-size:15px;color:var(--accent-text);">
-            ${divisasConTotal.map(dv=>`${fmtMoney(porDivisa[dv])} ${escapeHtml(dv)}`).join(' · ')}
+            ${divisasConTotal.map(dv=>`${fmtMoney(porDivisa[dv])} ${escapeDivisa(dv)}`).join(' · ')}
           </div>
         </div>` : '';
       items = deudasOrden==='az' ? ordenarPorPersona(items) : items.sort((a,b)=>(b.creado_en||b.fecha)-(a.creado_en||a.fecha) || (b.id||0)-(a.id||0));
@@ -234,10 +234,10 @@ function deudaRowHtml(d){
         <div class="avatar">🤝</div>
         <div class="li-main">
           <div class="li-title">${escapeHtml(nombreGrupoMeDeben(d))}</div>
-          <div class="li-sub">${conteoGrupoMeDeben(d)} · ${escapeHtml(d.divisa)}</div>
+          <div class="li-sub">${conteoGrupoMeDeben(d)} · ${escapeDivisa(d.divisa)}</div>
         </div>
         <div class="li-trail">
-          <div class="li-amount">${fmtMoney(d.monto)} ${escapeHtml(d.divisa)}</div>
+          <div class="li-amount">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</div>
           <div style="margin-top:4px;">${estadoBadgeHtml('pendiente')}</div>
           <div style="margin-top:4px;">${etiquetaTipoGrupoMeDeben(d)}</div>
           ${d.tipo_me_deben===MEDEBEN_PRESTAMO?'<div style="margin-top:4px;"><span class="badge badge-descuenta">Descontar al pagar</span></div>':''}
@@ -248,11 +248,11 @@ function deudaRowHtml(d){
     <div class="list-item" data-id="${d.id}">
       <div class="avatar">${d.tipo==='pagar_a'?'💸':'🤝'}</div>
       <div class="li-main">
-        <div class="li-title">${escapeHtml(d.persona)}</div>
+        <div class="li-title">${escapeHtml(textoDivisasVisibles(d.persona))}</div>
         <div class="li-sub">${fmtDateShort(d.fecha)}</div>
       </div>
       <div class="li-trail">
-        <div class="li-amount ${d.tipo==='pagar_a'?'neg':''}">${fmtMoney(d.monto)} ${escapeHtml(d.divisa)}</div>
+        <div class="li-amount ${d.tipo==='pagar_a'?'neg':''}">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</div>
         <div style="margin-top:4px;">${estadoBadgeHtml(d.estado)}</div>
         <div style="margin-top:4px;">${d.tipo==='pagar_a' ? afectaBalanceBadgeHtml(d) : meDebenBadgeHtml(d)}</div>
       </div>
@@ -261,18 +261,18 @@ function deudaRowHtml(d){
 function deudaHistorialRowHtml(d){
   if(d && d.esGrupoVirtual){
     const cierre=Math.max(...d.items.map(x=>Number(x.fecha_cierre||0)));
-    return `<div class="list-item" data-grupo="${encodeURIComponent(d.key)}" data-estado-grupo="cobrado"><div class="avatar">🤝</div><div class="li-main"><div class="li-title">${escapeHtml(nombreGrupoMeDeben(d))}</div><div class="li-sub">${conteoGrupoMeDeben(d)} · ${escapeHtml(d.divisa)} · Cobrado el ${fmtDateShort(cierre)}</div></div><div class="li-trail"><div class="li-amount">${fmtMoney(d.monto)} ${escapeHtml(d.divisa)}</div><div style="margin-top:4px;">${estadoBadgeHtml('cobrado')}</div><div style="margin-top:4px;">${etiquetaTipoGrupoMeDeben(d)}</div>${d.tipo_me_deben===MEDEBEN_PRESTAMO?'<div style="margin-top:4px;"><span class="badge badge-descuenta">Descontar al pagar</span></div>':''}</div></div>`;
+    return `<div class="list-item" data-grupo="${encodeURIComponent(d.key)}" data-estado-grupo="cobrado"><div class="avatar">🤝</div><div class="li-main"><div class="li-title">${escapeHtml(nombreGrupoMeDeben(d))}</div><div class="li-sub">${conteoGrupoMeDeben(d)} · ${escapeDivisa(d.divisa)} · Cobrado el ${fmtDateShort(cierre)}</div></div><div class="li-trail"><div class="li-amount">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</div><div style="margin-top:4px;">${estadoBadgeHtml('cobrado')}</div><div style="margin-top:4px;">${etiquetaTipoGrupoMeDeben(d)}</div>${d.tipo_me_deben===MEDEBEN_PRESTAMO?'<div style="margin-top:4px;"><span class="badge badge-descuenta">Descontar al pagar</span></div>':''}</div></div>`;
   }
   const esMeDeben = d.tipo==='me_deben';
   return `
     <div class="list-item" data-id="${d.id}">
       <div class="avatar">${esMeDeben?'🤝':'💸'}</div>
       <div class="li-main">
-        <div class="li-title">${escapeHtml(d.persona)}</div>
+        <div class="li-title">${escapeHtml(textoDivisasVisibles(d.persona))}</div>
         <div class="li-sub">${esMeDeben?'Cobrado':'Pagado'} el ${fmtDateShort(d.fecha_cierre)} · Registrado ${fmtDateShort(d.fecha)}</div>
       </div>
       <div class="li-trail">
-        <div class="li-amount ${d.tipo==='pagar_a'?'neg':''}">${fmtMoney(d.monto)} ${escapeHtml(d.divisa)}</div>
+        <div class="li-amount ${d.tipo==='pagar_a'?'neg':''}">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</div>
         <div style="margin-top:4px;">${estadoBadgeHtml(d.estado)}</div>
         <div style="margin-top:4px;">${d.tipo==='pagar_a' ? afectaBalanceBadgeHtml(d) : meDebenBadgeHtml(d)}</div>
       </div>
@@ -378,10 +378,10 @@ function openDeudaDetalle(id, onChange){
   const envioDeuda = (!esMeDeben && d.origen==='envio') ? DB.envios.find(x=>x.id===d.origen_id) : null;
   const puedeEnviarAMensajero = !!envioDeuda && d.estado==='pendiente' && !!destinatarioActivoDeEnvio(envioDeuda);
   openModal(`
-    <div class="modal-title">${esMeDeben?'Me deben':'Pagar a'} — ${escapeHtml(d.persona)}</div>
+    <div class="modal-title">${esMeDeben?'Me deben':'Pagar a'} — ${escapeHtml(textoDivisasVisibles(d.persona))}</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:8px;">
-      <div class="sumrow"><span class="k">Persona / Entidad</span><span class="v">${escapeHtml(d.persona)}</span></div>
-      <div class="sumrow"><span class="k">Monto</span><span class="v">${fmtMoney(d.monto)} ${escapeHtml(d.divisa)}</span></div>
+      <div class="sumrow"><span class="k">Persona / Entidad</span><span class="v">${escapeHtml(textoDivisasVisibles(d.persona))}</span></div>
+      <div class="sumrow"><span class="k">Monto</span><span class="v">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</span></div>
       <div class="sumrow"><span class="k">Fecha del registro</span><span class="v">${fmtDateShort(d.fecha)}</span></div>
       <div class="sumrow"><span class="k">Etiqueta</span><span class="v">${esMeDeben ? meDebenBadgeHtml(d) : afectaBalanceBadgeHtml(d)}</span></div>
       <div class="sumrow"><span class="k">Estado</span><span class="v">${estadoBadgeHtml(d.estado)}</span></div>
@@ -430,8 +430,8 @@ function openDeudaDetalle(id, onChange){
           //    se había registrado (la ganancia se sumó en otra divisa).
           const mismaDivisaEnvio = mismasDivisas(envioOrigen.divisa_entrega, envioOrigen.divisa_ganancia);
           const msg = mismaDivisaEnvio
-            ? `Confirmar que se realizó la entrega de ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} a ${escapeHtml(d.persona)}? La ganancia de este envío ya fue reconocida al registrarlo, así que esta acción NO modifica el balance general.`
-            : `Confirmar pago de ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} a ${escapeHtml(d.persona)}? Esta acción RESTARÁ ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} del balance general (la ganancia ya fue reconocida en otra divisa al registrar el envío).`;
+            ? `Confirmar que se realizó la entrega de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? La ganancia de este envío ya fue reconocida al registrarlo, así que esta acción NO modifica el balance general.`
+            : `Confirmar pago de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción RESTARÁ ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} del balance general (la ganancia ya fue reconocida en otra divisa al registrar el envío).`;
           confirmDialog(msg, ()=>{
             d.estado = 'pagado'; d.fecha_cierre = Date.now();
             if(!mismaDivisaEnvio){
@@ -445,21 +445,21 @@ function openDeudaDetalle(id, onChange){
         }
         const restaAlPagar = d.afecta_balance || d.origen==='compra';
         const msg = restaAlPagar
-          ? `Confirmar pago de ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} a ${escapeHtml(d.persona)}? Esta acción RESTARÁ ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} del balance general.`
-          : `Confirmar pago de ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} a ${escapeHtml(d.persona)}?`;
+          ? `Confirmar pago de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción RESTARÁ ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} del balance general.`
+          : `Confirmar pago de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}?`;
         confirmDialog(msg, ()=>{
           d.estado = 'pagado'; d.fecha_cierre = Date.now();
           if(restaAlPagar) adjustBalance(d.divisa, -d.monto);
           save(); closeModal(); toast('Deuda marcada como pagada — pasó al Historial'); onChange && onChange();
         }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
       } else if(meDebenSumaAlCobrar(d)){
-        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} de ${escapeHtml(d.persona)}? Esta acción SUMARÁ ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} al balance general.`, ()=>{
+        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} de ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción SUMARÁ ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} al balance general.`, ()=>{
           d.estado = 'cobrado'; d.fecha_cierre = Date.now();
           adjustBalance(d.divisa, d.monto);
           save(); closeModal(); toast('Cobro registrado — pasó al Historial'); onChange && onChange();
         }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
       } else {
-        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeHtml(d.divisa)} de ${escapeHtml(d.persona)}?`, ()=>{
+        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} de ${escapeHtml(textoDivisasVisibles(d.persona))}?`, ()=>{
           d.estado = 'cobrado'; d.fecha_cierre = Date.now();
           save(); closeModal(); toast('Cobro registrado — pasó al Historial'); onChange && onChange();
         }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
@@ -468,7 +468,7 @@ function openDeudaDetalle(id, onChange){
   }
   document.getElementById('dd-del').onclick = ()=>{
     closeModal();
-    confirmDialog(`¿Eliminar este registro de ${escapeHtml(d.persona)}?`, ()=> eliminarConDeshacer('Deuda eliminada', ()=>{
+    confirmDialog(`¿Eliminar este registro de ${escapeHtml(textoDivisasVisibles(d.persona))}?`, ()=> eliminarConDeshacer('Deuda eliminada', ()=>{
       if(d.tipo==='me_deben'){
         if(meDebenRestaAlCrear(d)){
           if(d.estado==='pendiente') adjustBalance(d.divisa, d.monto);
@@ -530,7 +530,7 @@ function destinatarioWhatsAppEnvio(envio){
 }
 function mensajeWhatsAppEnvioEntregado(dest, envio, fechaEntrega){
   const datos =
-    `Cantidad: ${fmtMoney(envio.cantidad_pagada)} ${envio.divisa_entrega}\n` +
+    `Cantidad: ${fmtMoney(envio.cantidad_pagada)} ${nombreDivisaVisible(envio.divisa_entrega)}\n` +
     `Fecha ${fechaDDMMAAAA(fechaEntrega)}\n`;
   if(dest.rol==='trabajador'){
     return `Hola ${dest.persona.nombre},\n` +
@@ -575,7 +575,7 @@ function mensajeCobroParaMensajero(comprador,pendientes){
   if(comprador.direccion)lineas.push(`🧭 ${comprador.direccion}`);
   const porDivisa=new Map();
   pendientes.forEach(d=>porDivisa.set(d.divisa,round2((porDivisa.get(d.divisa)||0)+Number(d.monto||0))));
-  [...porDivisa.entries()].sort((a,b)=>a[0].localeCompare(b[0],'es')).forEach(([divisa,monto])=>lineas.push(`💰 ${fmtMoney(monto)} ${divisa}`));
+  [...porDivisa.entries()].sort((a,b)=>a[0].localeCompare(b[0],'es')).forEach(([divisa,monto])=>lineas.push(`💰 ${fmtMoney(monto)} ${nombreDivisaVisible(divisa)}`));
   return lineas.join('\\n');
 }
 function enviarGrupoMeDebenAlMensajero(g,onNotificado){
@@ -616,7 +616,7 @@ function openDeudaGrupoDetalle(clave,onChange,estado='pendiente'){
   const g=grupoMeDebenPorClave(clave,estado);if(!g)return;
   const c=g.comprador||{};
   const notas=[...new Set(g.items.map(d=>String(d.nota||'').trim()).filter(Boolean))];
-  const detalle=g.items.map(d=>{const v=d.origen==='venta'?DB.ventas.find(x=>x.id===d.origen_id):null;const concepto=v?`Venta de ${fmtMoney(v.cantidad_vendida)} ${v.divisa_vendida}`:'Registro manual';return `<div class="sumrow"><span class="k">${fmtDateShort(v?.fecha_hora||d.fecha)} · ${escapeHtml(concepto)}</span><span class="v">${fmtMoney(d.monto)} ${escapeHtml(d.divisa)}</span></div>`;}).join('');
+  const detalle=g.items.map(d=>{const v=d.origen==='venta'?DB.ventas.find(x=>x.id===d.origen_id):null;const concepto=v?`Venta de ${fmtMoney(v.cantidad_vendida)} ${nombreDivisaVisible(v.divisa_vendida)}`:'Registro manual';return `<div class="sumrow"><span class="k">${fmtDateShort(v?.fecha_hora||d.fecha)} · ${escapeHtml(concepto)}</span><span class="v">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</span></div>`;}).join('');
   const pendiente=estado==='pendiente';
   openModal(`
     <div class="modal-title">🤝 ${escapeHtml(nombreGrupoMeDeben(g))}</div>
@@ -624,7 +624,7 @@ function openDeudaGrupoDetalle(clave,onChange,estado='pendiente'){
       <div class="sumrow"><span class="k">Comprador</span><span class="v">${escapeHtml(c.nombre||g.comprador_nombre||'—')} ${escapeHtml(c.nombre_completo||'')}</span></div>
       <div class="sumrow"><span class="k">Teléfono</span><span class="v">${escapeHtml(c.telefono||'—')}</span></div>
       <div class="sumrow"><span class="k">Dirección</span><span class="v">${escapeHtml(c.direccion||'—')}</span></div>
-      <div class="sumrow"><span class="k">Monto total a cobrar</span><span class="v">${fmtMoney(g.monto)} ${escapeHtml(g.divisa)}</span></div>
+      <div class="sumrow"><span class="k">Monto total a cobrar</span><span class="v">${fmtMoney(g.monto)} ${escapeDivisa(g.divisa)}</span></div>
       <div class="sumrow"><span class="k">Tipo de deuda</span><span class="v">${etiquetaTipoGrupoMeDeben(g)}</span></div>
       <div class="sumrow"><span class="k">Estado</span><span class="v">${estadoBadgeHtml(estado)}</span></div>
       <div class="sumrow"><span class="k">Primera venta/registro</span><span class="v">${fmtDateShort(g.fecha_primera)}</span></div>
@@ -641,7 +641,7 @@ function openDeudaGrupoDetalle(clave,onChange,estado='pendiente'){
   document.getElementById('ddg-aceptar').onclick=()=>retornoHistorialDivisa?volverDesdeDetalleMovimiento():closeModal();
   const enviar=document.getElementById('ddg-mensajero');if(enviar)enviar.onclick=()=>enviarGrupoMeDebenAlMensajero(g,()=>openDeudaGrupoDetalle(clave,onChange,estado));
   const cobrar=document.getElementById('ddg-cobrar');
-  if(cobrar)cobrar.onclick=()=>confirmDialog(`¿Marcar como cobrada la deuda completa de ${escapeHtml(nombreGrupoMeDeben(g))} por ${fmtMoney(g.monto)} ${escapeHtml(g.divisa)}?${g.tipo_me_deben===MEDEBEN_INFORMATIVO?' No se modificará el balance.':' Se sumará el monto al balance de esa divisa.'}`,()=>{
+  if(cobrar)cobrar.onclick=()=>confirmDialog(`¿Marcar como cobrada la deuda completa de ${escapeHtml(nombreGrupoMeDeben(g))} por ${fmtMoney(g.monto)} ${escapeDivisa(g.divisa)}?${g.tipo_me_deben===MEDEBEN_INFORMATIVO?' No se modificará el balance.':' Se sumará el monto al balance de esa divisa.'}`,()=>{
     const fecha=Date.now();g.items.forEach(d=>{d.estado='cobrado';d.fecha_cierre=fecha;if(meDebenSumaAlCobrar(d))adjustBalance(d.divisa,Number(d.monto||0));});
     save();closeModal();toast('Deuda consolidada cobrada — pasó al Historial');onChange&&onChange();
   },{okLabel:'Marcar como cobrado',cancelLabel:'Cancelar',danger:false});

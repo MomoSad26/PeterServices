@@ -1,6 +1,6 @@
 # Mapa del proyecto Remesas
 
-Última actualización: 2026-11-01
+Última actualización: 2026-11-03
 
 Índice de navegación. Lee la sección pertinente; no abras todos los archivos por defecto. Las reglas obligatorias están en `docs/INVARIANTS.md` y las relaciones entre módulos en `docs/DEPENDENCY_MAP.md`.
 
@@ -36,7 +36,7 @@ El impacto indica la consecuencia típica de una regresión, no una prioridad pa
 |---|---|---|---|
 | Persistencia y modelo | `js/db.js` | cambie esquema, carga, guardado o migración | Crítico: pérdida o corrupción de datos |
 | Utilidades | `js/utilidades.js` | cambien formato, búsqueda común, fechas o diálogos | Alto: afecta muchos módulos |
-| Cálculo de saldos | `js/balance-base.js`, `js/balance.js` | cambien divisas, saldos o vista Balance | Crítico: importes y resultados del negocio |
+| Cálculo de saldos y nombres visibles de divisas | `js/balance-base.js`, `js/balance.js`, `js/interfaz.js`, `js/db.js`, `js/importacion.js` | cambien divisas, saldos, selector o vista Balance | Crítico: relaciones internas, importes y presentación |
 | Reordenar divisas | `js/balance-reorder.js` | cambie gesto táctil, orden o controles | Medio: interacción y persistencia del orden |
 | Navegación | `js/router.js`, `js/interfaz.js` | cambien rutas, overlays, modales o Atrás | Alto: acceso y estado de pantallas |
 | Clientes y trabajadores | `js/clientes.js`, `js/trabajadores.js` | cambien fichas, listados o formularios | Alto: referencias históricas |
@@ -45,7 +45,7 @@ El impacto indica la consecuencia típica de una regresión, no una prioridad pa
 | Transferencias internas | `js/transferencias.js` | cambien movimientos entre divisas | Crítico: balance de origen/destino, historial por divisa y reversión |
 | Ventas y compradores | `js/movimientos.js`, `js/entregas.js` | cambien ventas o asociación de compradores | Crítico: snapshot de contacto, deuda vinculada, búsqueda y balance |
 | Historial | `js/historial.js`, `js/paginacion.js`, `js/archivo.js` | cambien filtros, páginas o archivado | Alto: consulta y recuperación de operaciones |
-| Operaciones | `js/movimientos.js` | cambien ventas, compras, gastos o In/Out | Crítico: saldos y deudas |
+| Operaciones (Compra/Ventas) | `index.html`, `js/router.js`, `js/movimientos.js`, `js/panel.js`, `js/busqueda.js` | cambien menú, pestañas, accesos del Panel o resultados del buscador | Alto por navegación; crítico por saldos y deudas. La ruta común es `#/operaciones`; las tablas y lógicas de Compra y Ventas siguen separadas. |
 | Deudas | `js/deudas.js` | cambien creación, cierre, cobro o pago | Crítico: obligaciones, consolidación virtual, notificación y saldos |
 | Respaldo y exportación | `js/respaldos.js`, `js/importacion.js`, `js/xlsx.js` | cambien importación, exportación, fusión, cifrado o Excel | Crítico: recuperación y portabilidad de datos |
 | Panel | `js/panel.js` | cambie el resumen operativo Hoy/Ayer | Medio: consistencia de indicadores |
@@ -61,7 +61,7 @@ Los scripts se cargan en `index.html`, no usan `import/export`. Consulta la secu
 
 ## Navegación principal
 
-Las rutas se declaran en `index.html` y se resuelven en `js/router.js`: Panel, Clientes, Envío, Trabajadores, Entregas, Historial, Operaciones (Compra/Ventas), Gastos, In/Out, Transferencias Internas, Balance, Deudas, Respaldos y Ajustes. `Ajustes` debe permanecer como último elemento.
+Las 14 entradas del menú se declaran en `index.html` y se resuelven en `js/router.js`: Panel, Clientes, Envío, Trabajadores, Entregas, Historial, Operaciones (Compra/Ventas), Gastos, In/Out, Transferencias Internas, Balance, Deudas, Respaldos y Ajustes. `#/compras` y `#/ventas` son alias heredados que abren `#/operaciones` en la pestaña correspondiente. `Ajustes` debe permanecer como último elemento.
 
 ## Android y publicación
 

@@ -1,6 +1,6 @@
 # Contexto técnico del proyecto Remesas
 
-Última actualización: 2026-11-01
+Última actualización: 2026-11-03
 
 ## Producto y arquitectura
 
@@ -23,8 +23,9 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 - La notificación a un mensajero desde un grupo de cobro prepara un WhatsApp con todas las divisas pendientes del comprador; la persona usuaria confirma el envío desde WhatsApp.
 - Los registros archivados se mantienen para cálculos y relaciones.
 - `js/fecha-previa.js` añade controles ◀/▶ de día a todos los campos editables `date` y `datetime-local`, incluidos los que aparecen dinámicamente en formularios y filtros. Emite eventos `input` y `change`; `datetime-local` conserva su hora y usa aritmética de calendario local.
-- La navegación se define en `index.html` y `js/router.js`; Compras y Ventas comparten `#/operaciones` con pestaña en memoria (`operacionesTab`); Ajustes permanece como último menú.
-- Cada divisa conserva `nombre` como clave interna fija y `nombre_visible` como etiqueta editable. Las relaciones guardan siempre `nombre`; las pantallas y los selectores presentan `nombre_visible`.
+- El menú lateral contiene 14 entradas. Operaciones ocupa la antigua posición de Compras y usa una sola ruta: `#/operaciones`. `operacionesTab` (`compra`/`ventas`) vive en memoria; Compra abre por defecto y el topbar refleja la pestaña. Los alias `#/compras` y `#/ventas` llevan a la pestaña respectiva. El Panel enlaza cada indicador con su pestaña y el buscador conserva secciones separadas; las tablas y reglas de Compra y Ventas no se fusionan.
+- Cada divisa conserva `nombre` como clave interna inmutable y `nombre_visible` como etiqueta editable únicamente desde Balance → Editar divisa. Todas las relaciones, comparaciones y filtros persistidos usan `nombre`; toda presentación usa `nombre_visible`. Las divisas nuevas nacen con ambos nombres iguales y la carga local completa `nombre_visible` ausente con `nombre`.
+- Los respaldos JSON incluyen ambos campos de la tabla `divisas`. Al importar respaldos antiguos se asigna `nombre_visible = nombre`; una etiqueta personalizada local prevalece sobre una importada para la misma divisa y las colisiones visibles se evitan sin modificar las claves internas.
 - Los respaldos cifrados manuales/automáticos se generan en `js/respaldos.js`; `js/importacion.js` implementa la fusión por tabla, remapeo de IDs y actualización incremental del balance. Las tablas ausentes en respaldos antiguos se ignoran y los formatos antiguos siguen siendo importables.
 
 ## Android y publicación

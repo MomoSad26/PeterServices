@@ -6,6 +6,8 @@
 - Las divisas distinguen `nombre` interno fijo de `nombre_visible` editable. Los selectores conservan el nombre interno en el valor y presentan el nombre visible; el cambio se confirma desde Balance → Editar divisa.
 - Las bases locales anteriores reciben `nombre_visible = nombre` al cargarse. La importación respeta el nombre visible del respaldo si no existe personalización local ni colisión; el respaldo JSON incluye ambos campos sin cambiar su formato.
 - Se incrementó la caché PWA a `remesas-v30`. No se modificaron datos de operaciones, identidad/firma Android ni workflow; no se compiló APK.
+- Se alinearon `README.md`, `docs/INVARIANTS.md`, `PROJECT_MAP.md`, `docs/DEPENDENCY_MAP.md` y `docs/PROJECT_CONTEXT.md` con la navegación y el modelo de nombres visible/interno.
+- Commit funcional publicado en `main`: `afb58505d2c48e8ea6693c1f77e974f90ffa6ab8`.
 
 
 ## 2026-11-01 — Compradores, deudas consolidadas y Transferencias Internas

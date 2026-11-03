@@ -1,18 +1,19 @@
 # Remesas — PeterServices
 
-Última actualización: 2026-11-01
+Última actualización: 2026-11-03
 
 Aplicación local para administrar un negocio de remesas. Incluye una interfaz web progresiva (PWA) y una APK Android que presenta la misma aplicación dentro de un WebView.
 
 ## Qué permite gestionar
 
-Clientes, trabajadores, envíos, destinatarios, mensajeros y compradores; ventas, compras, gastos, In/Out y transferencias internas; historial, divisas, balance, deudas y respaldos.
+Clientes, trabajadores, envíos, destinatarios, mensajeros y compradores; **Operaciones** (pestañas Compra y Ventas), gastos, In/Out y transferencias internas; historial, divisas, balance, deudas y respaldos.
 
 ## Arquitectura en breve
 
 - **Web:** HTML, CSS y JavaScript clásico, sin framework ni proceso de empaquetado.
 - **Datos:** se guardan localmente en el dispositivo mediante IndexedDB, con compatibilidad/migración desde localStorage. Las tablas nuevas de Compradores y Transferencias se incorporan mediante defaults sin reiniciar datos existentes.
-- **Operaciones:** Transferencias Internas mueve importes entre dos divisas sin registrar ganancia ni calcular una tasa. En Ventas se puede asociar un comprador; las deudas pendientes asociadas se agrupan visualmente por comprador, divisa y tipo, sin fusionar los registros originales.
+- **Operaciones:** el menú lateral reúne Compra y Ventas en la ruta `#/operaciones`, con dos pestañas internas. Las compras y las ventas siguen siendo tablas y procesos separados: se conservan sus formularios, historiales y efectos de balance. Los accesos del Panel y la opción «Ver todos» del buscador abren la pestaña correspondiente; las secciones de búsqueda siguen separadas y cada resultado individual abre su detalle en un modal.
+- **Divisas:** cada registro conserva `nombre` como clave interna fija para relaciones y `nombre_visible` como etiqueta editable desde Balance → Editar divisa. Los selectores muestran la etiqueta visible, pero guardan el nombre interno. Los respaldos incluyen ambos campos y los respaldos antiguos se completan usando `nombre` como nombre visible.
 - **Cobros:** desde el detalle de un grupo pendiente se puede preparar un mensaje de WhatsApp para un mensajero con todas las divisas pendientes de ese comprador. El envío final se confirma en WhatsApp.
 - **PWA:** el service worker precarga los recursos para permitir el uso offline después de la carga inicial.
 - **Android:** un WebView carga una copia de los archivos web empaquetada dentro de la APK.
@@ -62,6 +63,10 @@ gradle assembleRelease
 ```
 
 La APK local se genera en `android/app/build/outputs/apk/release/app-release.apk`.
+
+## Menú y navegación
+
+El menú lateral contiene 14 entradas. **Operaciones** ocupa la antigua posición de Compras y reúne las pestañas **Compra** y **Ventas** sin unificar sus tablas. Los enlaces antiguos `#/compras` y `#/ventas` se redirigen a `#/operaciones` con la pestaña respectiva.
 
 ## Actualizaciones y conservación de datos
 

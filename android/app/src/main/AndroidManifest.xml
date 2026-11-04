@@ -3,6 +3,8 @@
 
   <!-- Para consultar en GitHub si hay una versión nueva de la app. -->
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Se solicita en tiempo de ejecución al pulsar el botón de contactos. -->
+  <uses-permission android:name="android.permission.READ_CONTACTS" />
   <!-- Solo Android 7–9: guardar el respaldo automático en Descargas/Remesas.
        En Android 10+ no hace falta ningún permiso. -->
   <uses-permission

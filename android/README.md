@@ -6,9 +6,11 @@ El uso principal del negocio es local. La app necesita conexión para consultar 
 
 ## Selector nativo de contactos
 
-En la APK, los campos `input[type="tel"]` incorporan un botón 👤. El puente `AndroidBridge.pickContact()` abre el selector del sistema con `ACTION_PICK` y `ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE`; Android muestra los números disponibles y la persona elige uno. El acceso se limita al registro seleccionado mediante la concesión temporal del URI, por lo que no se añade el permiso amplio `READ_CONTACTS`.
+En la APK, los campos `input[type="tel"]` incorporan un botón 👤. Al pulsarlo, `AndroidBridge.pickContact()` comprueba el permiso `READ_CONTACTS` y, si todavía no está concedido, explica el motivo y solicita autorización en tiempo de ejecución. Si se deniega de forma permanente, ofrece abrir los ajustes de la aplicación.
 
-El número devuelto se coloca en el campo que abrió el selector y se normaliza al recibirlo: se conservan solo dígitos, se antepone `53` cuando quedan exactamente ocho y siempre se agrega `+`. Los campos escritos manualmente no se modifican. La PWA/navegador no muestra el botón porque no dispone del puente nativo.
+Con el permiso concedido, Android consulta `ContactsContract.CommonDataKinds.Phone.CONTENT_URI` y muestra una lista nativa con búsqueda por nombre o número. Cada fila representa un número, de modo que los contactos con varios teléfonos permiten elegir cualquiera. Solo se leen los nombres y números telefónicos necesarios para seleccionar; no se consultan correos ni direcciones, no se sube la agenda y no se guarda una copia local.
+
+El número elegido se devuelve al campo que abrió el selector y se normaliza al recibirlo: se conservan solo dígitos, se antepone `53` cuando quedan exactamente ocho y siempre se agrega `+`. Los campos escritos manualmente no se modifican. La PWA/navegador no muestra el botón porque no dispone del puente nativo.
 
 ## Cómo actualizar la app
 

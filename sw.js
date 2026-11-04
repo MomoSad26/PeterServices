@@ -1,4 +1,4 @@
-const CACHE = 'remesas-v31';
+const CACHE = 'remesas-v32';
 const FILES = [
   './',
   './index.html',

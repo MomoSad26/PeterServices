@@ -2,6 +2,7 @@ package com.peterservices.remesas;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -15,7 +16,13 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.provider.ContactsContract;
+import android.provider.Settings;
 import android.util.Base64;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
+import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -24,7 +31,13 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.Filter;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.core.graphics.Insets;
@@ -40,6 +53,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import org.json.JSONObject;
 
 /**
@@ -54,7 +68,8 @@ public class MainActivity extends Activity {
   private static final int REQ_PICK_FILE = 1;
   private static final int REQ_SAVE_FILE = 2;
   private static final int REQ_PERMISO_ALMACENAMIENTO = 3;
-  private static final int REQ_PICK_CONTACT = 4;
+  private static final int REQ_PERMISO_CONTACTOS = 4;
+  private static final String PREF_CONTACTOS_SOLICITADO = "permiso_lectura_contactos_solicitado";
   // Respaldos automáticos: carpeta pública Descargas/Remesas (sobrevive a
   // desinstalar la app) y cuántos se conservan.
   private static final String CARPETA_RESPALDOS = "Remesas";
@@ -218,23 +233,10 @@ public class MainActivity extends Activity {
       });
     }
 
-    // Abre el selector del sistema limitado a números telefónicos. ACTION_PICK
-    // concede acceso temporal al número elegido y evita pedir READ_CONTACTS.
+    // La selección consulta la agenda local después de solicitar autorización.
     @JavascriptInterface
     public void pickContact() {
-      runOnUiThread(() -> {
-        Intent intent = new Intent(Intent.ACTION_PICK);
-        intent.setType(ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE);
-        if (intent.resolveActivity(getPackageManager()) == null) {
-          notificarErrorContacto("no_disponible");
-          return;
-        }
-        try {
-          startActivityForResult(intent, REQ_PICK_CONTACT);
-        } catch (ActivityNotFoundException e) {
-          notificarErrorContacto("no_disponible");
-        }
-      });
+      runOnUiThread(this::solicitarPermisoYMostrarAgenda);
     }
 
     // Guarda un respaldo automático en Descargas/Remesas sin preguntar nada.
@@ -337,7 +339,207 @@ public class MainActivity extends Activity {
         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
       // Con el permiso recién concedido, se reintenta el respaldo pendiente.
       webView.evaluateJavascript("typeof hacerRespaldoAutomatico==='function' && hacerRespaldoAutomatico()", null);
+      return;
     }
+    if (requestCode == REQ_PERMISO_CONTACTOS) {
+      if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        cargarAgendaTelefonos();
+      } else if (!shouldShowRequestPermissionRationale(Manifest.permission.READ_CONTACTS)) {
+        mostrarDialogoAjustesContactos();
+      } else {
+        notificarErrorContacto("permiso_denegado");
+      }
+    }
+  }
+
+  private void solicitarPermisoYMostrarAgenda() {
+    if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+      cargarAgendaTelefonos();
+      return;
+    }
+    boolean yaSolicitado = getPreferences(MODE_PRIVATE)
+        .getBoolean(PREF_CONTACTOS_SOLICITADO, false);
+    boolean mostrarExplicacion = shouldShowRequestPermissionRationale(Manifest.permission.READ_CONTACTS);
+    if (yaSolicitado && !mostrarExplicacion) {
+      mostrarDialogoAjustesContactos();
+      return;
+    }
+    new AlertDialog.Builder(this)
+        .setTitle("Acceso a contactos")
+        .setMessage("PeterServices necesita permiso para consultar los nombres y números telefónicos de tu agenda y permitirte elegir uno. Esta consulta se realiza localmente para rellenar el campo seleccionado; no se sube ni se guarda una copia de tus contactos.")
+        .setNegativeButton("Ahora no", (dialog, which) -> dialog.dismiss())
+        .setPositiveButton("Continuar", (dialog, which) -> {
+          getPreferences(MODE_PRIVATE).edit().putBoolean(PREF_CONTACTOS_SOLICITADO, true).apply();
+          requestPermissions(new String[] {Manifest.permission.READ_CONTACTS}, REQ_PERMISO_CONTACTOS);
+        })
+        .show();
+  }
+
+  private void mostrarDialogoAjustesContactos() {
+    new AlertDialog.Builder(this)
+        .setTitle("Permiso de contactos necesario")
+        .setMessage("El permiso para leer contactos está desactivado. Puedes habilitarlo en los ajustes de la aplicación. Los campos siguen permitiendo escribir números manualmente.")
+        .setNegativeButton("Cancelar", (dialog, which) -> dialog.dismiss())
+        .setPositiveButton("Abrir ajustes", (dialog, which) -> {
+          Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+          intent.setData(Uri.fromParts("package", getPackageName(), null));
+          try { startActivity(intent); }
+          catch (ActivityNotFoundException e) { notificarErrorContacto("permiso_denegado"); }
+        })
+        .show();
+  }
+
+  private static class NumeroContacto {
+    final String nombre;
+    final String numero;
+    NumeroContacto(String nombre, String numero) {
+      this.nombre = nombre;
+      this.numero = numero;
+    }
+    @Override public String toString() { return nombre + " " + numero; }
+  }
+
+  private void cargarAgendaTelefonos() {
+    // La consulta se realiza en segundo plano para no congelar la interfaz.
+    new Thread(() -> {
+      ArrayList<NumeroContacto> contactos = new ArrayList<>();
+      String error = null;
+      String[] columnas = {
+          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY,
+          ContactsContract.CommonDataKinds.Phone.NUMBER
+      };
+      String filtro = ContactsContract.CommonDataKinds.Phone.NUMBER + " IS NOT NULL AND "
+          + ContactsContract.CommonDataKinds.Phone.NUMBER + " != ''";
+      String orden = ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY + " COLLATE LOCALIZED ASC";
+      try (Cursor cursor = getContentResolver().query(
+          ContactsContract.CommonDataKinds.Phone.CONTENT_URI, columnas, filtro, null, orden)) {
+        if (cursor != null) {
+          int idxNombre = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY);
+          int idxNumero = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+          while (cursor.moveToNext()) {
+            String nombre = idxNombre >= 0 ? cursor.getString(idxNombre) : null;
+            String numero = idxNumero >= 0 ? cursor.getString(idxNumero) : null;
+            if (numero == null || numero.trim().isEmpty()) continue;
+            if (nombre == null || nombre.trim().isEmpty()) nombre = "Contacto sin nombre";
+            contactos.add(new NumeroContacto(nombre.trim(), numero.trim()));
+          }
+        }
+      } catch (SecurityException e) {
+        error = "permiso_denegado";
+      } catch (Exception e) {
+        error = "error_lectura";
+      }
+      final String errorFinal = error;
+      runOnUiThread(() -> {
+        if (isFinishing() || isDestroyed()) return;
+        if (errorFinal != null) notificarErrorContacto(errorFinal);
+        else if (contactos.isEmpty()) notificarErrorContacto("sin_contactos_telefono");
+        else mostrarListaContactos(contactos);
+      });
+    }, "consulta-agenda-contactos").start();
+  }
+
+  private int dp(float valor) {
+    return Math.round(valor * getResources().getDisplayMetrics().density);
+  }
+
+  private void mostrarListaContactos(ArrayList<NumeroContacto> contactos) {
+    EditText buscar = new EditText(this);
+    buscar.setSingleLine(true);
+    buscar.setInputType(InputType.TYPE_CLASS_TEXT);
+    buscar.setHint("Buscar por nombre o número");
+    buscar.setPadding(dp(12), dp(8), dp(12), dp(8));
+
+    ListView lista = new ListView(this);
+    lista.setDividerHeight(dp(1));
+    // Mantener una copia fuente intacta para que varias búsquedas sucesivas
+    // puedan volver a mostrar contactos que quedaron fuera de un filtro previo.
+    final ArrayList<NumeroContacto> contactosOriginales = new ArrayList<>(contactos);
+    ArrayAdapter<NumeroContacto> adaptador = new ArrayAdapter<NumeroContacto>(
+        this, android.R.layout.simple_list_item_1, new ArrayList<>(contactosOriginales)) {
+      private final Filter filtroContactos = new Filter() {
+        @Override
+        protected FilterResults performFiltering(CharSequence constraint) {
+          String consulta = constraint == null ? "" : constraint.toString().trim().toLowerCase(Locale.ROOT);
+          String consultaNumerica = consulta.replaceAll("[^0-9]", "");
+          ArrayList<NumeroContacto> encontrados = new ArrayList<>();
+          for (NumeroContacto contacto : contactosOriginales) {
+            boolean coincide = consulta.isEmpty()
+                || contacto.nombre.toLowerCase(Locale.ROOT).contains(consulta)
+                || (!consultaNumerica.isEmpty()
+                    && contacto.numero.replaceAll("[^0-9]", "").contains(consultaNumerica));
+            if (coincide) encontrados.add(contacto);
+          }
+          FilterResults resultados = new FilterResults();
+          resultados.values = encontrados;
+          resultados.count = encontrados.size();
+          return resultados;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        protected void publishResults(CharSequence constraint, FilterResults results) {
+          clear();
+          if (results != null && results.values != null) {
+            addAll((ArrayList<NumeroContacto>) results.values);
+          }
+          notifyDataSetChanged();
+        }
+      };
+
+      @Override
+      public Filter getFilter() {
+        return filtroContactos;
+      }
+
+      @Override
+      public View getView(int position, View convertView, ViewGroup parent) {
+        TextView fila = (TextView) super.getView(position, convertView, parent);
+        NumeroContacto contacto = getItem(position);
+        fila.setText(contacto.nombre + "\n" + contacto.numero);
+        fila.setTextSize(15);
+        fila.setTextColor(Color.BLACK);
+        fila.setPadding(dp(16), dp(11), dp(16), dp(11));
+        fila.setMinHeight(dp(58));
+        fila.setMaxLines(2);
+        return fila;
+      }
+    };
+    lista.setAdapter(adaptador);
+
+    TextView vacio = new TextView(this);
+    vacio.setText("No hay coincidencias.");
+    vacio.setTextSize(14);
+    vacio.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+    LinearLayout contenido = new LinearLayout(this);
+    contenido.setOrientation(LinearLayout.VERTICAL);
+    contenido.setPadding(dp(18), dp(4), dp(18), 0);
+    contenido.addView(buscar, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50)));
+    contenido.addView(lista, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(390)));
+    contenido.addView(vacio, new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+    lista.setEmptyView(vacio);
+
+    buscar.addTextChangedListener(new TextWatcher() {
+      @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+      @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+        adaptador.getFilter().filter(s);
+      }
+      @Override public void afterTextChanged(Editable s) {}
+    });
+
+    AlertDialog dialogo = new AlertDialog.Builder(this)
+        .setTitle("Selecciona un número")
+        .setView(contenido)
+        .setNegativeButton("Cancelar", (dialog, which) -> dialog.dismiss())
+        .create();
+    lista.setOnItemClickListener((parent, view, position, id) -> {
+      NumeroContacto elegido = adaptador.getItem(position);
+      if (elegido != null) devolverNumeroContacto(elegido.numero);
+      dialogo.dismiss();
+    });
+    dialogo.show();
   }
 
   private void devolverNumeroContacto(String numero) {
@@ -375,27 +577,6 @@ public class MainActivity extends Activity {
       } catch (Exception e) {
         Toast.makeText(this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
       }
-    } else if (requestCode == REQ_PICK_CONTACT) {
-      // Cancelar el selector no altera el campo que estaba activo.
-      if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
-      String numero = null;
-      try (Cursor c = getContentResolver().query(
-          data.getData(),
-          new String[] {ContactsContract.CommonDataKinds.Phone.NUMBER},
-          null, null, null)) {
-        if (c != null && c.moveToFirst()) {
-          int columna = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-          if (columna >= 0) numero = c.getString(columna);
-        }
-      } catch (Exception e) {
-        notificarErrorContacto("error_lectura");
-        return;
-      }
-      if (numero == null || numero.trim().isEmpty()) {
-        notificarErrorContacto("sin_numero");
-        return;
-      }
-      devolverNumeroContacto(numero);
     }
   }
 

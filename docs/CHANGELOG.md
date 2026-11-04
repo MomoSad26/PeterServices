@@ -1,5 +1,14 @@
 # Historial breve y línea base
 
+## 2026-11-03 — Corrección del selector: permiso READ_CONTACTS y agenda local
+
+- Se sustituyó el intento de abrir un proveedor externo con `ACTION_PICK` por una consulta de contactos dentro de la APK. Así la selección ya no depende de que el dispositivo tenga una aplicación que resuelva el intent MIME específico de números.
+- Se añadió `READ_CONTACTS` al Manifest y su solicitud en tiempo de ejecución al pulsar 👤. Antes de pedirlo se explica el uso; si se deniega permanentemente, se ofrece abrir Ajustes. Los campos siguen permitiendo entrada manual.
+- Con autorización, `MainActivity` consulta de forma asíncrona `Phone.CONTENT_URI` y presenta una lista nativa con búsqueda; muestra cada número en una fila separada. Solo consulta nombres y teléfonos para seleccionar, sin subirlos ni guardarlos como datos de la app.
+- Se mantiene la normalización del número seleccionado y el retorno al campo activo. Se incrementó la caché PWA a `remesas-v32`.
+- No se modificaron el esquema de negocio, la firma, el `applicationId`, el keystore ni el workflow. No se compiló APK; queda pendiente la prueba en un dispositivo Android real.
+
+
 ## 2026-11-03 (noche) — Selector nativo de contactos y corrección de WhatsApp
 
 - Se agregó el botón 👤 a todos los campos `input[type="tel"]`, incluidos los formularios insertados dinámicamente. Solo aparece en la APK cuando está disponible `AndroidBridge.pickContact()`; en la web/PWA sin puente permanece oculto.

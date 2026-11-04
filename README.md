@@ -17,7 +17,7 @@ Clientes, trabajadores, envíos, destinatarios, mensajeros y compradores; **Oper
 - **Cobros:** desde el detalle de un grupo pendiente se puede preparar un mensaje de WhatsApp para un mensajero con todas las divisas pendientes de ese comprador. El envío final se confirma en WhatsApp.
 - **PWA:** el service worker precarga los recursos para permitir el uso offline después de la carga inicial.
 - **Android:** un WebView carga una copia de los archivos web empaquetada dentro de la APK.
-- **Contactos en Android:** los campos de teléfono muestran el botón 👤 dentro del control y abren el selector nativo de números. Solo el número elegido vuelve al campo activo. La normalización se aplica únicamente a contactos seleccionados: elimina caracteres que no sean dígitos, agrega el prefijo `53` a los números que quedan con exactamente 8 dígitos y antepone `+`; la entrada manual permanece intacta.
+- **Contactos en Android:** los campos de teléfono muestran el botón 👤 dentro del control. Al pulsarlo, la app solicita `READ_CONTACTS` en tiempo de ejecución y muestra una lista nativa consultable con nombres y números de toda la agenda. Cada número aparece por separado; solo el número elegido vuelve al campo activo. Los nombres y teléfonos se consultan localmente, sin subirlos ni guardar una copia. La normalización solo afecta al número elegido; la entrada manual permanece intacta.
 - **WhatsApp:** los mensajes preparados para cobros y entregas utilizan saltos de línea reales y se codifican una sola vez al construir el enlace.
 - **Actualizaciones:** los datos del negocio no se sincronizan con un servidor. La comprobación de nuevas APK consulta GitHub Releases y necesita conexión.
 

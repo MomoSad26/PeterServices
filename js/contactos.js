@@ -38,7 +38,9 @@
     const mensajes = {
       no_disponible: 'No se pudo abrir la libreta de contactos del teléfono.',
       sin_numero: 'No se pudo obtener el número del contacto seleccionado.',
-      error_lectura: 'No se pudo leer el número seleccionado. Inténtalo de nuevo.'
+      sin_contactos_telefono: 'No se encontraron contactos con números de teléfono.',
+      permiso_denegado: 'No se concedió el permiso para consultar los contactos. Puedes escribir el número manualmente o habilitarlo en los ajustes.',
+      error_lectura: 'No se pudo leer la agenda de contactos. Inténtalo de nuevo.'
     };
     const mensaje = mensajes[codigo] || 'No se pudo seleccionar el contacto.';
     if(typeof window.toast === 'function') window.toast(mensaje);

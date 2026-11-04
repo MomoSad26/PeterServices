@@ -26,6 +26,10 @@ Estas reglas protegen datos existentes, cálculos del negocio y la capacidad de 
 - El menú principal tiene 14 entradas; Compras y Ventas se presentan bajo **Operaciones** en la ruta `#/operaciones`, con `operacionesTab` en memoria (`compra` o `ventas`). Sus tablas, lógica, balances y secciones del buscador siguen separadas. Los enlaces heredados `#/compras` y `#/ventas` deben abrir la pestaña correspondiente.
 - Mantén el aviso de actualización como decisión de la persona usuaria. Ni la PWA ni la APK deben reemplazar la interfaz en uso sin la confirmación prevista.
 - No amplíes la superficie del puente `AndroidBridge` ni expongas métodos nativos a JavaScript sin revisar el impacto de seguridad del WebView.
+- La selección de teléfonos usa únicamente `AndroidBridge.pickContact()` con el selector Android `ACTION_PICK` y `Phone.CONTENT_TYPE`. No se solicita `READ_CONTACTS`: Android concede acceso temporal al registro telefónico que el usuario seleccionó; no se lee ni almacena la agenda completa.
+- Los botones 👤 solo se muestran cuando existe el puente nativo. Todo campo telefónico presente o futuro debe usar `input[type="tel"]` para recibir el control común, incluso cuando se inserte dinámicamente.
+- Al recibir un número de un contacto, elimina todos los caracteres que no sean dígitos; con exactamente 8 dígitos antepone `53`; para cualquier otra longitud conserva los dígitos; siempre agrega `+` al inicio. Si no quedan dígitos o se cancela la selección, no modifiques el campo. Esta normalización no se aplica a números escritos manualmente.
+- Los mensajes de WhatsApp deben contener saltos de línea reales (`\n` en cadenas JavaScript), nunca la secuencia literal `\\n`; aplica `encodeURIComponent()` una sola vez al mensaje completo al construir la URL. `AndroidBridge.openExternal()` no debe volver a codificarla.
 
 ## JavaScript y PWA
 ## Navegación y presentación de divisas

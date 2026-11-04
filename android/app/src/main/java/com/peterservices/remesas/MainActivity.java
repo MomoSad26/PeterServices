@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.provider.ContactsContract;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -39,6 +40,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import org.json.JSONObject;
 
 /**
  * Contenedor nativo de la web de Remesas: la app corre en su propio WebView
@@ -52,6 +54,7 @@ public class MainActivity extends Activity {
   private static final int REQ_PICK_FILE = 1;
   private static final int REQ_SAVE_FILE = 2;
   private static final int REQ_PERMISO_ALMACENAMIENTO = 3;
+  private static final int REQ_PICK_CONTACT = 4;
   // Respaldos automáticos: carpeta pública Descargas/Remesas (sobrevive a
   // desinstalar la app) y cuántos se conservan.
   private static final String CARPETA_RESPALDOS = "Remesas";
@@ -215,6 +218,25 @@ public class MainActivity extends Activity {
       });
     }
 
+    // Abre el selector del sistema limitado a números telefónicos. ACTION_PICK
+    // concede acceso temporal al número elegido y evita pedir READ_CONTACTS.
+    @JavascriptInterface
+    public void pickContact() {
+      runOnUiThread(() -> {
+        Intent intent = new Intent(Intent.ACTION_PICK);
+        intent.setType(ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE);
+        if (intent.resolveActivity(getPackageManager()) == null) {
+          notificarErrorContacto("no_disponible");
+          return;
+        }
+        try {
+          startActivityForResult(intent, REQ_PICK_CONTACT);
+        } catch (ActivityNotFoundException e) {
+          notificarErrorContacto("no_disponible");
+        }
+      });
+    }
+
     // Guarda un respaldo automático en Descargas/Remesas sin preguntar nada.
     // Devuelve "ok" o "error:<motivo>". Se ejecuta en el hilo del puente
     // (no en el de la interfaz), así que puede escribir el archivo directo.
@@ -318,6 +340,20 @@ public class MainActivity extends Activity {
     }
   }
 
+  private void devolverNumeroContacto(String numero) {
+    String valorSeguro = JSONObject.quote(numero);
+    webView.post(() -> webView.evaluateJavascript(
+        "if(typeof window.onContactoSeleccionado==='function')window.onContactoSeleccionado(" + valorSeguro + ");",
+        null));
+  }
+
+  private void notificarErrorContacto(String codigo) {
+    String valorSeguro = JSONObject.quote(codigo);
+    webView.post(() -> webView.evaluateJavascript(
+        "if(typeof window.onContactoError==='function')window.onContactoError(" + valorSeguro + ");",
+        null));
+  }
+
   @Override
   protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
@@ -339,6 +375,27 @@ public class MainActivity extends Activity {
       } catch (Exception e) {
         Toast.makeText(this, "Error al guardar: " + e.getMessage(), Toast.LENGTH_LONG).show();
       }
+    } else if (requestCode == REQ_PICK_CONTACT) {
+      // Cancelar el selector no altera el campo que estaba activo.
+      if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+      String numero = null;
+      try (Cursor c = getContentResolver().query(
+          data.getData(),
+          new String[] {ContactsContract.CommonDataKinds.Phone.NUMBER},
+          null, null, null)) {
+        if (c != null && c.moveToFirst()) {
+          int columna = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+          if (columna >= 0) numero = c.getString(columna);
+        }
+      } catch (Exception e) {
+        notificarErrorContacto("error_lectura");
+        return;
+      }
+      if (numero == null || numero.trim().isEmpty()) {
+        notificarErrorContacto("sin_numero");
+        return;
+      }
+      devolverNumeroContacto(numero);
     }
   }
 

@@ -4,6 +4,12 @@ La APK contiene la aplicación web del repositorio dentro de un Android WebView.
 
 El uso principal del negocio es local. La app necesita conexión para consultar GitHub Releases y comprobar si existe una APK nueva.
 
+## Selector nativo de contactos
+
+En la APK, los campos `input[type="tel"]` incorporan un botón 👤. El puente `AndroidBridge.pickContact()` abre el selector del sistema con `ACTION_PICK` y `ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE`; Android muestra los números disponibles y la persona elige uno. El acceso se limita al registro seleccionado mediante la concesión temporal del URI, por lo que no se añade el permiso amplio `READ_CONTACTS`.
+
+El número devuelto se coloca en el campo que abrió el selector y se normaliza al recibirlo: se conservan solo dígitos, se antepone `53` cuando quedan exactamente ocho y siempre se agrega `+`. Los campos escritos manualmente no se modifican. La PWA/navegador no muestra el botón porque no dispone del puente nativo.
+
 ## Cómo actualizar la app
 
 1. Los cambios de la aplicación llegan a `main` sin iniciar una compilación automática.

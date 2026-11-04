@@ -1,5 +1,15 @@
 # Historial breve y línea base
 
+## 2026-11-03 (noche) — Selector nativo de contactos y corrección de WhatsApp
+
+- Se agregó el botón 👤 a todos los campos `input[type="tel"]`, incluidos los formularios insertados dinámicamente. Solo aparece en la APK cuando está disponible `AndroidBridge.pickContact()`; en la web/PWA sin puente permanece oculto.
+- Android abre el selector del sistema con `ACTION_PICK` y `Phone.CONTENT_TYPE`. Se eligió acceso temporal al número seleccionado en lugar de solicitar `READ_CONTACTS`, para no requerir permiso de lectura de la agenda completa.
+- El número seleccionado se devuelve al campo activo y se normaliza: solo dígitos; exactamente 8 dígitos reciben el prefijo `53`; cualquier longitud conserva sus dígitos; siempre se agrega `+`. Los valores vacíos/cancelados y la entrada manual quedan intactos.
+- Se corrigió `mensajeCobroParaMensajero()`: el separador literal `\\n` se sustituyó por saltos de línea reales. Los otros flujos revisados ya usaban saltos reales y codificaban una sola vez con `encodeURIComponent()`.
+- Se agregó `js/contactos.js` a `index.html` y `sw.js`; la caché PWA cambió a `remesas-v31`. No hubo cambios de esquema, datos persistidos, identidad/firma Android ni workflow.
+- No se compiló ni publicó APK. Queda pendiente la validación manual del selector, permisos/retornos y apertura de WhatsApp en un teléfono Android real.
+
+
 ## 2026-11-03 — Operaciones unificadas y nombres visibles de divisas
 
 - Compras y Ventas comparten el menú y la ruta `#/operaciones` con pestañas en memoria; sus tablas, formularios, efectos de balance, historial y secciones del buscador permanecen separados. Se conservan alias para enlaces `#/compras` y `#/ventas`.

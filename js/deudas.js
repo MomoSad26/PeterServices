@@ -576,7 +576,7 @@ function mensajeCobroParaMensajero(comprador,pendientes){
   const porDivisa=new Map();
   pendientes.forEach(d=>porDivisa.set(d.divisa,round2((porDivisa.get(d.divisa)||0)+Number(d.monto||0))));
   [...porDivisa.entries()].sort((a,b)=>a[0].localeCompare(b[0],'es')).forEach(([divisa,monto])=>lineas.push(`💰 ${fmtMoney(monto)} ${nombreDivisaVisible(divisa)}`));
-  return lineas.join('\\n');
+  return lineas.join('\n');
 }
 function enviarGrupoMeDebenAlMensajero(g,onNotificado){
   const nombre=normalizarTexto(g.comprador_nombre||'');

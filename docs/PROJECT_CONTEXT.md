@@ -20,7 +20,9 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 - Las transferencias internas registran cantidades origen/destino introducidas manualmente, sin tasa automática ni ganancia. Se reflejan como una salida y una entrada, respectivamente.
 - Entregas contiene Destinatarios, Mensajeros y Compradores. Las ventas pueden guardar `comprador_id` y un snapshot histórico de nombre y contacto.
 - `js/deudas.js` agrupa virtualmente las deudas pendientes por comprador (nombre normalizado), divisa y tipo. Las filas individuales siguen en `DB.deudas`; cobrar un grupo cambia todos sus integrantes y aplica su efecto de balance una sola vez por registro.
-- La notificación a un mensajero desde un grupo de cobro prepara un WhatsApp con todas las divisas pendientes del comprador; la persona usuaria confirma el envío desde WhatsApp.
+- La notificación a un mensajero desde un grupo de cobro prepara un WhatsApp con todas las divisas pendientes del comprador; la persona usuaria confirma el envío desde WhatsApp. Los mensajes de cobro, entrega y aviso de pago deben usar saltos de línea reales y una sola codificación URL.
+- `js/contactos.js` decora automáticamente todos los `input[type="tel"]`, incluso los insertados dinámicamente, con un botón 👤 visible solo cuando existe el puente Android. Conserva el campo activo y recibe `window.onContactoSeleccionado(numero)`.
+- La normalización aplicada exclusivamente a números seleccionados elimina caracteres no numéricos, convierte exactamente 8 dígitos en `+53` seguido del número, conserva los demás largos y siempre antepone `+`. Una selección vacía o cancelada no cambia el valor; la escritura manual no se normaliza.
 - Los registros archivados se mantienen para cálculos y relaciones.
 - `js/fecha-previa.js` añade controles ◀/▶ de día a todos los campos editables `date` y `datetime-local`, incluidos los que aparecen dinámicamente en formularios y filtros. Emite eventos `input` y `change`; `datetime-local` conserva su hora y usa aritmética de calendario local.
 - El menú lateral contiene 14 entradas. Operaciones ocupa la antigua posición de Compras y usa una sola ruta: `#/operaciones`. `operacionesTab` (`compra`/`ventas`) vive en memoria; Compra abre por defecto y el topbar refleja la pestaña. Los alias `#/compras` y `#/ventas` llevan a la pestaña respectiva. El Panel enlaza cada indicador con su pestaña y el buscador conserva secciones separadas; las tablas y reglas de Compra y Ventas no se fusionan.
@@ -30,6 +32,7 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 
 ## Android y publicación
 
+- `MainActivity.java` expone `AndroidBridge.pickContact()`, que abre `ACTION_PICK` con `ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE` y devuelve el número de la fila elegida al WebView. El permiso amplio `READ_CONTACTS` no se solicita; Android concede acceso temporal al dato seleccionado.
 - `applicationId`: `com.peterservices.remesas`.
 - Keystore de firma existente: `android/remesas.keystore`. La misma clave debe firmar las actualizaciones; no la reemplaces ni reveles credenciales.
 - `versionCode`/`versionName` se derivan del número de ejecución de GitHub Actions; una versión nueva debe poder instalarse encima de la anterior.

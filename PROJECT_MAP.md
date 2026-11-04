@@ -40,6 +40,7 @@ El impacto indica la consecuencia típica de una regresión, no una prioridad pa
 | Reordenar divisas | `js/balance-reorder.js` | cambie gesto táctil, orden o controles | Medio: interacción y persistencia del orden |
 | Navegación | `js/router.js`, `js/interfaz.js` | cambien rutas, overlays, modales o Atrás | Alto: acceso y estado de pantallas |
 | Clientes y trabajadores | `js/clientes.js`, `js/trabajadores.js` | cambien fichas, listados o formularios | Alto: referencias históricas |
+| Contactos y teléfonos | `js/contactos.js`, `android/app/src/main/java/com/peterservices/remesas/MainActivity.java`, formularios en `js/clientes.js`, `js/trabajadores.js` y `js/entregas.js` | cambien el selector nativo, normalización, campos de teléfono o callback | Alto: edición de contactos; solo se normaliza el número recibido del selector Android |
 | Envíos | `js/envios.js`, `js/precio-especial.js` | cambien formularios o reglas de creación | Crítico: saldos, deudas e historial |
 | Entregas y compradores | `js/entregas.js` | cambien destinatarios, mensajeros o compradores | Alto: contactos y referencias históricas |
 | Transferencias internas | `js/transferencias.js` | cambien movimientos entre divisas | Crítico: balance de origen/destino, historial por divisa y reversión |
@@ -65,7 +66,7 @@ Las 14 entradas del menú se declaran en `index.html` y se resuelven en `js/rout
 
 ## Android y publicación
 
-- `android/app/src/main/java/com/peterservices/remesas/MainActivity.java`: WebView y puente JavaScript-Android.
+- `android/app/src/main/java/com/peterservices/remesas/MainActivity.java`: WebView y puente JavaScript-Android, incluido el selector de números de contacto con acceso temporal solo al elemento escogido.
 - `android/app/build.gradle.kts`: identidad, versión y firma de la app.
 - `android/sync-web.sh`: copia la web raíz a los assets incluidos en la APK.
 - `android/README.md`: actualización y compilación local de Android.

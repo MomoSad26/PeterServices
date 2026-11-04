@@ -536,3 +536,19 @@ body.balance-reordering #b-general .eye-btn{display:none!important;}
     font-size:10.5px;padding:7px 2px;letter-spacing:-.15px;
   }
 }
+
+
+/* Selector de contactos nativo: el boton se integra al borde derecho del telefono. */
+.telefono-contacto-wrap{display:flex;align-items:stretch;width:100%;min-width:0;}
+.telefono-contacto-wrap input[type="tel"]{flex:1 1 auto;width:1%;min-width:0;border-top-right-radius:0;border-bottom-right-radius:0;}
+.telefono-contacto-btn{
+  flex:0 0 42px;min-width:42px;min-height:42px;display:inline-flex;
+  align-items:center;justify-content:center;padding:6px;
+  border:1.5px solid var(--line-main);border-left:0;
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+  background:var(--surface-soft,var(--card-bg));color:var(--ink-main);
+  font-size:18px;line-height:1;cursor:pointer;touch-action:manipulation;
+}
+.telefono-contacto-btn:active{background:var(--line-main);}
+.telefono-contacto-btn:focus-visible{outline:3px solid var(--gold);outline-offset:2px;}
+.telefono-contacto-btn[hidden]{display:none!important;}

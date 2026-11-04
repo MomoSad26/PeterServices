@@ -1,5 +1,12 @@
 # Historial breve y línea base
 
+## 2026-11-03 — Corrección de compilación del selector de contactos
+
+- El primer build de Android tras añadir `READ_CONTACTS` detectó que `pickContact()` estaba dentro de la clase interna `Bridge` y la referencia `this::solicitarPermisoYMostrarAgenda` buscaba el método en `Bridge`, aunque pertenece a `MainActivity`.
+- Se corrigió la delegación usando `MainActivity.this` explícitamente. La solicitud runtime del permiso y la consulta local de la agenda permanecen sin cambios.
+- Se verificó la referencia y la existencia del método en el código fuente; no se ejecutó una nueva compilación Gradle en esta corrección.
+
+
 ## 2026-11-03 — Corrección del selector: permiso READ_CONTACTS y agenda local
 
 - Se sustituyó el intento de abrir un proveedor externo con `ACTION_PICK` por una consulta de contactos dentro de la APK. Así la selección ya no depende de que el dispositivo tenga una aplicación que resuelva el intent MIME específico de números.

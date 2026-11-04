@@ -236,7 +236,7 @@ public class MainActivity extends Activity {
     // La selección consulta la agenda local después de solicitar autorización.
     @JavascriptInterface
     public void pickContact() {
-      runOnUiThread(this::solicitarPermisoYMostrarAgenda);
+      runOnUiThread(() -> MainActivity.this.solicitarPermisoYMostrarAgenda());
     }
 
     // Guarda un respaldo automático en Descargas/Remesas sin preguntar nada.

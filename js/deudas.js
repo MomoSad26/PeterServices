@@ -176,8 +176,8 @@ function renderDeudas(content, presetParam){
     }
     }
     el.querySelectorAll('.list-item').forEach(li=>{
-      li.onclick = ()=> li.dataset.grupo
-        ? openDeudaGrupoDetalle(decodeURIComponent(li.dataset.grupo),refresh,li.dataset.estadoGrupo||'pendiente')
+      li.onclick = ()=> li.dataset.grupoId
+        ? openDeudaGrupoDetallePorId(Number(li.dataset.grupoId),refresh,li.dataset.estadoGrupo||'pendiente')
         : openDeudaDetalle(Number(li.dataset.id),refresh);
     });
   }
@@ -230,7 +230,7 @@ function afectaBalanceBadgeHtml(d){
 function deudaRowHtml(d){
   if(d && d.esGrupoVirtual){
     return `
-      <div class="list-item" data-grupo="${encodeURIComponent(d.key)}">
+      <div class="list-item" data-grupo-id="${d.items[0]?.id??''}">
         <div class="avatar">🤝</div>
         <div class="li-main">
           <div class="li-title">${escapeHtml(nombreGrupoMeDeben(d))}</div>
@@ -261,7 +261,7 @@ function deudaRowHtml(d){
 function deudaHistorialRowHtml(d){
   if(d && d.esGrupoVirtual){
     const cierre=Math.max(...d.items.map(x=>Number(x.fecha_cierre||0)));
-    return `<div class="list-item" data-grupo="${encodeURIComponent(d.key)}" data-estado-grupo="cobrado"><div class="avatar">🤝</div><div class="li-main"><div class="li-title">${escapeHtml(nombreGrupoMeDeben(d))}</div><div class="li-sub">${conteoGrupoMeDeben(d)} · ${escapeDivisa(d.divisa)} · Cobrado el ${fmtDateShort(cierre)}</div></div><div class="li-trail"><div class="li-amount">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</div><div style="margin-top:4px;">${estadoBadgeHtml('cobrado')}</div><div style="margin-top:4px;">${etiquetaTipoGrupoMeDeben(d)}</div>${d.tipo_me_deben===MEDEBEN_PRESTAMO?'<div style="margin-top:4px;"><span class="badge badge-descuenta">Descontar al pagar</span></div>':''}</div></div>`;
+    return `<div class="list-item" data-grupo-id="${d.items[0]?.id??''}" data-estado-grupo="cobrado"><div class="avatar">🤝</div><div class="li-main"><div class="li-title">${escapeHtml(nombreGrupoMeDeben(d))}</div><div class="li-sub">${conteoGrupoMeDeben(d)} · ${escapeDivisa(d.divisa)} · Cobrado el ${fmtDateShort(cierre)}</div></div><div class="li-trail"><div class="li-amount">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</div><div style="margin-top:4px;">${estadoBadgeHtml('cobrado')}</div><div style="margin-top:4px;">${etiquetaTipoGrupoMeDeben(d)}</div>${d.tipo_me_deben===MEDEBEN_PRESTAMO?'<div style="margin-top:4px;"><span class="badge badge-descuenta">Descontar al pagar</span></div>':''}</div></div>`;
   }
   const esMeDeben = d.tipo==='me_deben';
   return `
@@ -612,8 +612,20 @@ function eliminarGrupoMeDeben(g,onChange){
   });
   onChange&&onChange();
 }
+function grupoMeDebenPorDeudaId(id,estado='pendiente'){
+  const idBuscado=String(id);
+  return obtenerGruposMeDebenEstado(estado).find(g=>g.items.some(d=>String(d.id)===idBuscado))||null;
+}
+function openDeudaGrupoDetallePorId(id,onChange,estado='pendiente'){
+  const g=grupoMeDebenPorDeudaId(id,estado);
+  if(!g){openDeudaDetalle(Number(id),onChange);return;}
+  openDeudaGrupoDetalleGrupo(g,onChange,estado);
+}
 function openDeudaGrupoDetalle(clave,onChange,estado='pendiente'){
   const g=grupoMeDebenPorClave(clave,estado);if(!g)return;
+  openDeudaGrupoDetalleGrupo(g,onChange,estado);
+}
+function openDeudaGrupoDetalleGrupo(g,onChange,estado='pendiente'){
   const c=g.comprador||{};
   const notas=[...new Set(g.items.map(d=>String(d.nota||'').trim()).filter(Boolean))];
   const detalle=g.items.map(d=>{const v=d.origen==='venta'?DB.ventas.find(x=>x.id===d.origen_id):null;const concepto=v?`Venta de ${fmtMoney(v.cantidad_vendida)} ${nombreDivisaVisible(v.divisa_vendida)}`:'Registro manual';return `<div class="sumrow"><span class="k">${fmtDateShort(v?.fecha_hora||d.fecha)} · ${escapeHtml(concepto)}</span><span class="v">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</span></div>`;}).join('');
@@ -639,7 +651,7 @@ function openDeudaGrupoDetalle(clave,onChange,estado='pendiente'){
     <div class="modal-actions"><button class="btn btn-danger btn-block" id="ddg-eliminar">🗑️ Eliminar grupo${g.items.some(d=>d.origen==='venta')?' y ventas vinculadas':''}</button></div>
   `);
   document.getElementById('ddg-aceptar').onclick=()=>retornoHistorialDivisa?volverDesdeDetalleMovimiento():closeModal();
-  const enviar=document.getElementById('ddg-mensajero');if(enviar)enviar.onclick=()=>enviarGrupoMeDebenAlMensajero(g,()=>openDeudaGrupoDetalle(clave,onChange,estado));
+  const enviar=document.getElementById('ddg-mensajero');if(enviar)enviar.onclick=()=>enviarGrupoMeDebenAlMensajero(g,()=>openDeudaGrupoDetallePorId(g.items[0]?.id,onChange,estado));
   const cobrar=document.getElementById('ddg-cobrar');
   if(cobrar)cobrar.onclick=()=>confirmDialog(`¿Marcar como cobrada la deuda completa de ${escapeHtml(nombreGrupoMeDeben(g))} por ${fmtMoney(g.monto)} ${escapeDivisa(g.divisa)}?${g.tipo_me_deben===MEDEBEN_INFORMATIVO?' No se modificará el balance.':' Se sumará el monto al balance de esa divisa.'}`,()=>{
     const fecha=Date.now();g.items.forEach(d=>{d.estado='cobrado';d.fecha_cierre=fecha;if(meDebenSumaAlCobrar(d))adjustBalance(d.divisa,Number(d.monto||0));});

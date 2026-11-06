@@ -1,5 +1,11 @@
 # Historial breve y línea base
 
+## 2026-11-06 — Apertura estable del detalle de deudas agrupadas
+
+- Las filas agrupadas de «Me deben» e Historial identifican el grupo mediante el ID de una deuda integrante, en lugar de depender de reconstruir una clave compuesta guardada en el HTML.
+- Al pulsar se vuelve a localizar el grupo desde los registros actuales; si ya no existe como grupo, se abre el detalle del registro individual como alternativa. Se conservan la agrupación, el cobro, la eliminación con Deshacer y el envío al mensajero.
+- Se incrementó la caché PWA a `remesas-v33`. No se cambió el esquema persistido, los saldos, la firma Android ni el workflow; no se compiló ni publicó APK.
+
 ## 2026-11-03 — Corrección de compilación del selector de contactos
 
 - El primer build de Android tras añadir `READ_CONTACTS` detectó que `pickContact()` estaba dentro de la clase interna `Bridge` y la referencia `this::solicitarPermisoYMostrarAgenda` buscaba el método en `Bridge`, aunque pertenece a `MainActivity`.

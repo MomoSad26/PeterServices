@@ -1,5 +1,12 @@
 # Historial breve y línea base
 
+## 2026-11-06 (tarde) — Causa real: deudas sin comprador en «Me deben» no abrían su detalle
+
+- La corrección anterior (`remesas-v33`) solo cambió cómo se identifican los **grupos**; el fallo reportado seguía ocurriendo. Causa real: `obtenerGruposMeDebenEstado()` envolvía cada deuda **sin comprador** en un objeto `{key, items, monto, divisa…}` que no copiaba `id`, `fecha`, `estado` ni el resto de campos. `deudaRowHtml()` dibujaba la fila con ese envoltorio, así que salía `data-id="undefined"` y el toque no encontraba ninguna deuda.
+- Afectaba a las deudas manuales de «Me deben» de los tres tipos (Informativo, Préstamo, Sumar al cobrar), a las ya cobradas en Historial y a cualquier deuda de venta sin comprador. «Pagar a» no agrupa y por eso funcionaba; las ventas con comprador se muestran como grupo, que tiene su propio identificador.
+- Solución: el envoltorio individual lleva todos los campos de la deuda (`{...d, key, items:[d], …}`). La agrupación por comprador + divisa + tipo no cambia.
+- Comprobado en navegador con datos ficticios: los tres tipos abren el detalle; cobrar (Sumar al cobrar +monto; Préstamo devuelve lo restado), eliminar con Deshacer, abrir desde Historial y grupos por comprador siguen funcionando; sin errores JS en ninguna ruta. Caché PWA `remesas-v34`. No se compiló ni publicó APK.
+
 ## 2026-11-06 — Apertura estable del detalle de deudas agrupadas
 
 - Las filas agrupadas de «Me deben» e Historial identifican el grupo mediante el ID de una deuda integrante, en lugar de depender de reconstruir una clave compuesta guardada en el HTML.

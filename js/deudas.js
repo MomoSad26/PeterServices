@@ -63,7 +63,12 @@ function obtenerGruposMeDebenEstado(estado){
   const grupos=new Map();
   (DB.deudas||[]).filter(d=>d.tipo==='me_deben' && d.estado===estado).forEach(d=>{
     const nombre=deudaCompradorNombre(d);
-    if(!nombre){grupos.set('deuda:'+d.id,{key:'deuda:'+d.id,esGrupoVirtual:false,items:[d],monto:Number(d.monto||0),divisa:d.divisa,tipo_me_deben:meDebenTipo(d),persona:d.persona});return;}
+    // Deuda sin comprador: se muestra como fila individual. El envoltorio
+    // DEBE llevar todos los campos de la deuda (id, fecha, estado...): las
+    // filas se dibujan con él y el toque abre el detalle por `id`. Sin ellos
+    // la fila salía con data-id="undefined" y no abría nada (deudas manuales
+    // de "Me deben", también ya cobradas en Historial).
+    if(!nombre){grupos.set('deuda:'+d.id,{...d,key:'deuda:'+d.id,esGrupoVirtual:false,items:[d],monto:Number(d.monto||0),divisa:d.divisa,tipo_me_deben:meDebenTipo(d),persona:d.persona});return;}
     const clave=normalizarTexto(nombre)+'|'+String(d.divisa||'')+'|'+String(meDebenTipo(d));
     if(!grupos.has(clave)){
       const datos=deudaCompradorDatos(d);

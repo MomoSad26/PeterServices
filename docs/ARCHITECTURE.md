@@ -55,6 +55,7 @@ flowchart TD
   router -->|"#/busqueda (botón Buscar)"| search
   router -->|"#/clientes y detalles"| clients
   router -->|"#/trabajadores y detalles"| workers
+  router -->|"#/envio-trabajador/:id"| workers
   router -->|"#/envio"| shipments
   router -->|"#/precio-especial"| special
   router -->|"#/entregas"| deliveries
@@ -67,7 +68,8 @@ flowchart TD
   router -->|"#/ajustes"| settings
 
   clients -->|"abre formulario con cliente precargado"| shipments
-  workers -->|"abre formulario de envío a trabajador"| shipments
+  workers -->|"detalle navega a #/envio-trabajador/:id"| router
+  workers -->|"el formulario reutiliza wireEnvioForm"| shipments
   shipments -->|"elige destinatario"| deliveries
   operations -->|"selecciona comprador para una venta"| deliveries
   shipments -->|"crea deuda cuando el cobro queda pendiente"| debts
@@ -77,6 +79,10 @@ flowchart TD
   backups -->|"importar y fusionar datos"| importer
   backups -->|"exportar reporte ejecutivo"| excel
   reorder -->|"envuelve y amplía renderBalance"| balance
+  contacts -.->|"añade selector a teléfonos en APK"| clients
+  contacts -.->|"añade selector a teléfonos en APK"| workers
+  contacts -.->|"añade selector a teléfonos en APK"| deliveries
+  date -.->|"observa campos de fecha, incluidos los dinámicos"| screens
 
   panel -.->|"accesos a secciones"| router
   search -.->|"abre resultados y listas filtradas"| router
@@ -91,19 +97,21 @@ flowchart TD
   balance -->|"calcula a partir de los registros"| db
   debts -->|"lee / guarda"| db
   backups -->|"exporta / importa"| db
+  excel -->|"lee datos para el reporte"| db
+  special -->|"lee / guarda envíos especiales"| db
   archive -->|"marca o restaura archivado"| db
   importer -->|"fusiona registros y remapea IDs"| db
   panel -.->|"lee indicadores"| db
   search -.->|"busca en varias tablas"| db
 
   shipments -->|"aplica efectos contables"| balanceCore
+  special -->|"aplica efectos del envío especial"| balanceCore
   operations -->|"ajusta saldos"| balanceCore
   transfers -->|"resta origen y suma destino"| balanceCore
   debts -->|"aplica cobros y pagos"| balanceCore
   history -->|"revierte efectos al editar / eliminar envío"| balanceCore
   balance -->|"usa cálculos comunes"| balanceCore
 
-  operations -.-> shared
   panel -.-> utils
   search -.-> utils
   history -.-> paging
@@ -204,9 +212,9 @@ flowchart TD
   workflow -->|"ejecuta manualmente"| sync
   sync -->|"copia archivos web"| assets
   workflow -->|"construye"| gradle
-  sync --> assets
+  assets -->|"se empaquetan con"| gradle
+  gradle -->|"genera la APK y publica"| releases
   assets -->|"cargados localmente por"| android
-  gradle -->|"genera y publica"| releases
   android -->|"contiene"| bridge
 
   contacts -->|"pickContact()"| bridge
@@ -223,8 +231,6 @@ flowchart TD
   bootstrap -->|"getVersionCode() + fetch()"| releaseApi
   releaseApi -->|"informa última versión"| bootstrap
   bootstrap -->|"ofrece enlace de descarga"| bridge
-  releases -->|"publica Remesas.apk"| releaseApi
-
   click source "https://github.com/MomoSad26/PeterServices/tree/main" "Ver archivos web"
   click bootstrap "https://github.com/MomoSad26/PeterServices/blob/main/js/router.js" "Abrir router.js"
   click sw "https://github.com/MomoSad26/PeterServices/blob/main/sw.js" "Abrir sw.js"

@@ -1,6 +1,6 @@
 # Remesas — PeterServices
 
-Última actualización: 2026-11-03
+Última actualización: 2026-11-10
 
 Aplicación local para administrar un negocio de remesas. Incluye una interfaz web progresiva (PWA) y una APK Android que presenta la misma aplicación dentro de un WebView.
 
@@ -28,6 +28,7 @@ Clientes, trabajadores, envíos, destinatarios, mensajeros y compradores; **Oper
 | [AGENTS.md](AGENTS.md) | Procedimiento común que deben seguir los agentes de IA antes de editar. |
 | [docs/INVARIANTS.md](docs/INVARIANTS.md) | Reglas no negociables para proteger datos, navegación, PWA y firma Android. |
 | [PROJECT_MAP.md](PROJECT_MAP.md) | Índice de archivos y módulos para encontrar dónde comenzar. |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Diagramas Mermaid de la navegación, módulos, datos, PWA, Android e integraciones reales. |
 | [docs/DEPENDENCY_MAP.md](docs/DEPENDENCY_MAP.md) | Dependencias, efectos colaterales y comprobaciones recomendadas. |
 | [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) | Resumen técnico duradero de la arquitectura y publicación. |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Hitos confirmados y decisiones técnicas. |

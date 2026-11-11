@@ -1,6 +1,6 @@
 # Mapa del proyecto Remesas
 
-Última actualización: 2026-11-03
+Última actualización: 2026-11-10
 
 Índice de navegación. Lee la sección pertinente; no abras todos los archivos por defecto. Las reglas obligatorias están en `docs/INVARIANTS.md` y las relaciones entre módulos en `docs/DEPENDENCY_MAP.md`.
 
@@ -15,6 +15,7 @@
 - `.cursor/rules/`: indicaciones Cursor específicas por ruta.
 - `docs/PROJECT_CONTEXT.md`: contexto técnico duradero.
 - `docs/DEPENDENCY_MAP.md`: relaciones, efectos colaterales y validaciones sugeridas.
+- `docs/ARCHITECTURE.md`: diagramas de arquitectura basados en las rutas, llamadas, persistencia e integraciones comprobadas en el código.
 - `docs/CHANGELOG.md`: hitos y decisiones históricas resumidas.
 
 ## Entradas y estructura

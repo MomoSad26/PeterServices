@@ -186,11 +186,15 @@ flowchart TD
   source["Web estática del repositorio<br/>index.html · styles.css · prefs.js · js/"]
   bootstrap["bootstrap() en js/router.js"]
   sw["Service Worker<br/>sw.js"]
+  pwaManifest["Metadatos de instalación PWA<br/>manifest.json"]
   cache[("Caché offline de recursos")]
   sync["Sincronización de archivos web<br/>android/sync-web.sh"]
   assets[("Assets web dentro de la APK<br/>assets/www")]
   workflow["GitHub Actions<br/>workflow_dispatch solamente"]
-  gradle["Gradle / empaquetado APK"]
+  gradle["Gradle / construcción APK"]
+  apk["APK generada<br/>Remesas.apk"]
+  publish["Paso de publicación<br/>GitHub CLI"]
+  androidManifest["Permisos y Activity<br/>AndroidManifest.xml"]
   android["MainActivity.java<br/>Activity + WebViewAssetLoader"]
   bridge["AndroidBridge<br/>puente JavaScript–Android"]
   nativeContacts["Agenda del dispositivo<br/>READ_CONTACTS"]
@@ -204,6 +208,7 @@ flowchart TD
   links["Apertura de enlaces externos<br/>router.js · deudas.js · entregas.js"]
 
   source -->|"PWA en navegador"| bootstrap
+  source -->|"declara instalación"| pwaManifest
   bootstrap -->|"registra"| sw
   sw -->|"precarga / actualiza recursos"| cache
   cache -->|"sirve recursos almacenados"| source
@@ -213,8 +218,12 @@ flowchart TD
   sync -->|"copia archivos web"| assets
   workflow -->|"construye"| gradle
   assets -->|"se empaquetan con"| gradle
-  gradle -->|"genera la APK y publica"| releases
+  gradle -->|"genera"| apk
+  apk --> publish
+  workflow -->|"publica mediante gh release create"| publish
+  publish -->|"crea / actualiza Release"| releases
   assets -->|"cargados localmente por"| android
+  androidManifest -->|"configura permisos y Activity"| android
   android -->|"contiene"| bridge
 
   contacts -->|"pickContact()"| bridge
@@ -234,8 +243,10 @@ flowchart TD
   click source "https://github.com/MomoSad26/PeterServices/tree/main" "Ver archivos web"
   click bootstrap "https://github.com/MomoSad26/PeterServices/blob/main/js/router.js" "Abrir router.js"
   click sw "https://github.com/MomoSad26/PeterServices/blob/main/sw.js" "Abrir sw.js"
+  click pwaManifest "https://github.com/MomoSad26/PeterServices/blob/main/manifest.json" "Abrir manifest.json"
   click sync "https://github.com/MomoSad26/PeterServices/blob/main/android/sync-web.sh" "Abrir sync-web.sh"
   click workflow "https://github.com/MomoSad26/PeterServices/blob/main/.github/workflows/build-apk.yml" "Abrir workflow"
+  click androidManifest "https://github.com/MomoSad26/PeterServices/blob/main/android/app/src/main/AndroidManifest.xml" "Abrir AndroidManifest.xml"
   click android "https://github.com/MomoSad26/PeterServices/blob/main/android/app/src/main/java/com/peterservices/remesas/MainActivity.java" "Abrir MainActivity.java"
   click bridge "https://github.com/MomoSad26/PeterServices/blob/main/android/app/src/main/java/com/peterservices/remesas/MainActivity.java" "Ver AndroidBridge"
   click contacts "https://github.com/MomoSad26/PeterServices/blob/main/js/contactos.js" "Abrir contactos.js"
@@ -250,17 +261,17 @@ flowchart TD
   classDef native fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
   classDef external fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
   classDef store fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
-  class source,bootstrap,sw,contacts,prefs,backup,links web
-  class sync,workflow,gradle,android,bridge platform
+  class source,bootstrap,sw,contacts,prefs,backup,links,pwaManifest web
+  class sync,workflow,gradle,android,bridge,androidManifest,publish platform
   class nativeContacts,nativeFiles native
-  class whatsapp,releases,releaseApi external
+  class whatsapp,releases,releaseApi,apk external
   class assets,cache store
 ~~~
 
 ### Comportamiento real de cada plataforma
 
 - **PWA:** router.js registra sw.js durante el arranque. El Service Worker mantiene su propia lista de archivos y versión de caché; precarga recursos y usa caché con actualización desde red. Si encuentra una versión nueva, la interfaz solicita confirmación antes de activarla.
-- **APK:** el workflow manual ejecuta android/sync-web.sh para copiar los archivos de la web raíz a los assets de Android y después construye la APK con Gradle. MainActivity.java carga esos assets con WebViewAssetLoader.
+- **APK:** el workflow, activado solo por workflow_dispatch, ejecuta android/sync-web.sh para copiar los archivos de la web raíz a los assets de Android; después Gradle construye la APK y el propio workflow la publica en GitHub Releases. MainActivity.java carga los assets con WebViewAssetLoader. AndroidManifest.xml declara los permisos necesarios y la Activity exportada.
 - **Puente Android:** AndroidBridge expone, entre otros, setThemeColor(), getVersionCode(), openExternal(), pickContact(), saveAutoBackup() y saveFile(). Los módulos web usan esos métodos cuando están disponibles; en varios flujos existe alternativa de navegador.
 - **Agenda:** contactos.js registra el campo telefónico activo y solicita pickContact(). MainActivity.java gestiona READ_CONTACTS, consulta la agenda local y devuelve el número elegido a la página. No se copia la agenda a la base de datos ni se transmite a un servidor.
 - **Archivos:** respaldos.js solicita respaldos automáticos o manuales. En Android, MainActivity escribe el respaldo automático en Descargas/Remesas y recibe los archivos descargados/seleccionados mediante el puente y el selector del sistema.

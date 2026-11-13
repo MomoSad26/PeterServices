@@ -1,0 +1,32 @@
+name: Pruebas
+
+# Solo manual, igual que la compilación de la APK: un push no consume cuota.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar Playwright
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Ejecutar pruebas
+        run: npm test

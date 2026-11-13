@@ -331,13 +331,14 @@ function openSelectorEntrega(tipo, onPick){
 }
 
 /* ---- Enviar la entrega al mensajero por WhatsApp ---- */
-// Monto tal como en el ejemplo acordado: solo el número, sin divisa ni separador de miles.
-function montoParaMensajero(n){ return String(round2(Number(n)||0)); }
+// Monto con separador de miles y divisa, igual que el mensaje de cobros de
+// "Me deben": sin la divisa el mensajero no sabe qué moneda entregar.
+function montoParaMensajero(envio){ return `${fmtMoney(envio.cantidad_pagada)} ${nombreDivisaVisible(envio.divisa_entrega)}`; }
 function mensajeEntregaParaMensajero(destinatario, envio){
   const lineas = [`👤 ${destinatario.nombre_completo || destinatario.nombre}`];
   if(destinatario.telefono) lineas.push(`📱 ${destinatario.telefono}`);
   if(destinatario.direccion) lineas.push(`🧭 ${destinatario.direccion}`);
-  lineas.push(`💰 ${montoParaMensajero(envio.cantidad_pagada)}`);
+  lineas.push(`💰 ${montoParaMensajero(envio)}`);
   return lineas.join('\n');
 }
 // Destinatario vigente del envío (null si no tiene o si fue eliminado).

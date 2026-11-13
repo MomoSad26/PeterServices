@@ -1,5 +1,16 @@
 # Historial breve y línea base
 
+## 2026-11-13 — Pruebas automáticas, mejoras de uso y limpieza
+
+- **Pruebas:** nueva carpeta `tests/` (Playwright, datos ficticios) y workflow manual `tests.yml`. Cubre archivos/caché, rutas, envíos, deudas, gastos, ventas, respaldos, Panel y Ajustes.
+- **Error corregido en la importación de respaldos** (lo detectaron las pruebas): dos operaciones idénticas del mismo minuto —por ejemplo un envío y su duplicado— se importaban como una sola y la deuda de la segunda quedaba enlazada al envío equivocado. Ahora cada registro local solo se empareja con un registro del archivo; reimportar el mismo respaldo sigue sin duplicar.
+- **Mensaje al mensajero (Pagar a):** el monto lleva separador de miles y divisa (`💰 8,200 CUP efectivo`), igual que el de cobros.
+- **Ajustes → Acerca de la app:** versión instalada y botón «Buscar actualizaciones», que consulta en el momento sin esperar las 6 horas.
+- **Teléfonos:** todo campo `type="tel"` avisa si el número no tiene código de país; solo advierte, no modifica ni bloquea.
+- **Panel:** fila «Pendientes de más de 7 días» cuando hay deudas viejas.
+- **Limpieza:** `js/movimientos.js` se dividió en `ventas.js`, `compras.js`, `gastos.js` e `in-out.js` sin cambiar lógica; se eliminó la copia muerta de `mergeImport` en `js/archivo.js` (la vigente está en `js/importacion.js`).
+- **Documentación:** Deshacer dura 5 s en todos los módulos; se reparó la sección «JavaScript y PWA» de `INVARIANTS.md`. Caché PWA `remesas-v35`. No se compiló ni publicó APK.
+
 ## 2026-11-06 (tarde) — Causa real: deudas sin comprador en «Me deben» no abrían su detalle
 
 - La corrección anterior (`remesas-v33`) solo cambió cómo se identifican los **grupos**; el fallo reportado seguía ocurriendo. Causa real: `obtenerGruposMeDebenEstado()` envolvía cada deuda **sin comprador** en un objeto `{key, items, monto, divisa…}` que no copiaba `id`, `fecha`, `estado` ni el resto de campos. `deudaRowHtml()` dibujaba la fila con ese envoltorio, así que salía `data-id="undefined"` y el toque no encontraba ninguna deuda.

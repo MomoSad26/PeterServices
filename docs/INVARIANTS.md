@@ -32,13 +32,13 @@ Estas reglas protegen datos existentes, cálculos del negocio y la capacidad de 
 - Al recibir un número de un contacto, elimina todos los caracteres que no sean dígitos; con exactamente 8 dígitos antepone `53`; para cualquier otra longitud conserva los dígitos; siempre agrega `+` al inicio. Si no quedan dígitos o se cancela la selección, no modifiques el campo. Esta normalización no se aplica a números escritos manualmente.
 - Los mensajes de WhatsApp deben contener saltos de línea reales (`\n` en cadenas JavaScript), nunca la secuencia literal `\\n`; aplica `encodeURIComponent()` una sola vez al mensaje completo al construir la URL. `AndroidBridge.openExternal()` no debe volver a codificarla.
 
-## JavaScript y PWA
 ## Navegación y presentación de divisas
 
 - **Operaciones** es una agrupación visual, no una fusión de datos: Compra y Ventas conservan sus registros, formularios, historiales y efectos contables separados. Al entrar por primera vez se selecciona Compra; al alternar pestañas se conserva el estado en memoria de la sesión. El título superior refleja la pestaña activa.
 - El nombre visible de una divisa se puede modificar únicamente desde Balance → Editar divisa. Debe ser obligatorio, tener como máximo 30 caracteres y no duplicar otra etiqueta tras normalizar mayúsculas, tildes y espacios. El cambio requiere confirmación explícita.
 - Los valores de los selectores y las comparaciones/filtros internos usan siempre `nombre`; las etiquetas, listados, paneles, historiales, búsqueda y reportes muestran `nombre_visible`.
 
+## JavaScript y PWA
 
 - Los archivos `js/*.js` son scripts clásicos que comparten ámbito global. Conserva el orden de carga en `index.html`; no conviertas módulos a `import/export` como parte de una mejora localizada.
 - Todo script nuevo, eliminado o renombrado debe reflejarse en `index.html` y en la lista `FILES` de `sw.js`. Los módulos nuevos deben cargarse después de sus dependencias o usar funciones globales solo después de que el arranque haya cargado todos los scripts.
@@ -56,6 +56,7 @@ Estas reglas protegen datos existentes, cálculos del negocio y la capacidad de 
 ## Compilación autorizada únicamente
 
 - `.github/workflows/build-apk.yml` debe tener únicamente el evento `workflow_dispatch`.
+- `.github/workflows/tests.yml` (pruebas automáticas) también es solo manual y no compila ni publica nada.
 - Nunca añadas disparadores automáticos (`push`, `pull_request`, `schedule` u otros) sin autorización expresa.
 - No ejecutes el workflow ni compiles/publiques APK si la persona usuaria no lo pidió expresamente.
 - Una modificación de documentación o código no funcional no debe generar una APK ni consumir cuota de artefactos.

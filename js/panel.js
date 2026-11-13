@@ -59,6 +59,7 @@ function panelEstadoRespaldo(){
   const dias = Math.max(1, Math.round((hoy.getTime()-fechaUltimo.getTime())/86400000));
   return `Hace ${dias} ${dias===1?'día':'días'}`;
 }
+const PANEL_DEUDA_VIEJA_DIAS = 7;
 function renderPanel(content, conservarDia=false){
   if(!conservarDia) panelDiaSeleccionado = 'Hoy';
   const rango = panelRangoDia(panelDiaSeleccionado);
@@ -70,6 +71,12 @@ function renderPanel(content, conservarDia=false){
   const ventasDia = (DB.ventas||[]).filter(v=>panelEsDelDia(v.fecha_hora,rango));
   const cobrarPendiente = (DB.deudas||[]).filter(d=>d.tipo==='me_deben' && d.estado==='pendiente').length;
   const pagarPendiente = (DB.deudas||[]).filter(d=>d.tipo==='pagar_a' && d.estado==='pendiente').length;
+  // Recordatorio: deudas pendientes registradas hace más de 7 días.
+  const limiteViejas = Date.now() - PANEL_DEUDA_VIEJA_DIAS*86400000;
+  const esVieja = d=> d.estado==='pendiente' && Number(d.creado_en||d.fecha||0) < limiteViejas;
+  const cobrarViejas = (DB.deudas||[]).filter(d=>d.tipo==='me_deben' && esVieja(d)).length;
+  const pagarViejas = (DB.deudas||[]).filter(d=>d.tipo==='pagar_a' && esVieja(d)).length;
+  const viejasTexto = [cobrarViejas?`${cobrarViejas} me deben`:'', pagarViejas?`${pagarViejas} pagar a`:''].filter(Boolean).join(' · ');
   const gananciasPorDivisa = panelAgruparMontos(
     enviosDiaTodos.slice().sort((a,b)=>Number(b.fecha_hora||0)-Number(a.fecha_hora||0)),
     'divisa_ganancia', e=>e.ganancia
@@ -90,6 +97,7 @@ function renderPanel(content, conservarDia=false){
       ${panelFila('📤',`Envíos registrados ${palabraDia}`,String(enviosDia.length),'envios')}
       ${panelFila('⏳','Me deben:',String(cobrarPendiente),'cobrar')}
       ${panelFila('⏳','Pagar a:',String(pagarPendiente),'pagar')}
+      ${viejasTexto ? panelFila('🔔',`Pendientes de más de ${PANEL_DEUDA_VIEJA_DIAS} días`,viejasTexto,cobrarViejas?'cobrar':'pagar') : ''}
       ${panelFila('💰',`Ganancia de ${palabraDia}`,panelValorPorDivisa(gananciasPorDivisa),'balance',true)}
       ${panelFila('🧾',`Gastos de ${palabraDia}`,panelValorPorDivisa(gastosPorDivisa),'balance',true)}
       ${panelFila('🛒',`Compras de ${palabraDia}`,String(comprasDia.length),'compras')}

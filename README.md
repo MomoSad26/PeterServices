@@ -83,4 +83,4 @@ El funcionamiento del negocio y sus datos son locales. El repositorio contiene a
 
 ## Pruebas y validación
 
-Actualmente no hay una suite automatizada de pruebas en el repositorio. Para cambios funcionales, sigue las comprobaciones manuales sugeridas en [docs/DEPENDENCY_MAP.md](docs/DEPENDENCY_MAP.md) y registra con claridad qué se probó realmente. No afirmes que se ejecutaron pruebas automáticas si no existen o no se ejecutaron.
+El repositorio incluye pruebas automáticas en `tests/` (Playwright, datos ficticios; ver `tests/README.md`). Se ejecutan con `cd tests && npm install && npm test` o desde Actions → **Pruebas** (solo manual). Cubren los flujos principales, no toda la app: lo que no cubran sigue requiriendo comprobación manual. Indica siempre qué se ejecutó realmente. Para el resto, sigue las comprobaciones sugeridas en [docs/DEPENDENCY_MAP.md](docs/DEPENDENCY_MAP.md).

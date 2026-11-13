@@ -23,7 +23,7 @@ flowchart TD
     special["Precio especial<br/>js/precio-especial.js"]
     deliveries["Entregas<br/>js/entregas.js"]
     history["Historial de envíos<br/>js/historial.js"]
-    operations["Operaciones, Gastos e In/Out<br/>js/movimientos.js"]
+    operations["Operaciones, Gastos e In/Out<br/>js/movimientos.js + ventas, compras, gastos, in-out"]
     transfers["Transferencias internas<br/>js/transferencias.js"]
     balance["Balance y movimientos por divisa<br/>js/balance.js"]
     debts["Deudas<br/>js/deudas.js"]
@@ -168,7 +168,7 @@ flowchart TD
 
 - Las flechas desde router.js representan los casos de ruta que efectivamente existen en route(). No todas corresponden a una entrada del menú.
 - El menú lateral contiene 14 entradas. Buscar abre la ruta auxiliar #/busqueda desde el botón de la barra superior; Precio especial también es una ruta, pero no una entrada independiente del menú.
-- Operaciones, Gastos e In/Out comparten movimientos.js. La ruta #/operaciones presenta pestañas Compra y Ventas; las otras dos rutas muestran sus listados correspondientes. Compartir archivo no significa que Compra y Ventas compartan tablas.
+- Operaciones, Gastos e In/Out comparten el listado paginado de movimientos.js; cada tipo vive en su archivo (ventas.js, compras.js, gastos.js, in-out.js). La ruta #/operaciones presenta pestañas Compra y Ventas; las otras dos rutas muestran sus listados correspondientes. Compartir archivo no significa que Compra y Ventas compartan tablas.
 - Historial significa Historial de envíos: historial.js lista y abre el detalle de los envíos. No es un historial unificado de todas las operaciones.
 - Entregas agrupa tres pestañas internas: Destinatarios, Mensajeros y Compradores. Por eso los formularios de envíos y ventas consultan ese mismo módulo para seleccionar las personas correspondientes.
 - Deudas conserva registros individuales; el agrupamiento de Me deben es una presentación virtual. Las deudas pueden relacionarse con envíos, ventas y compradores.
@@ -284,7 +284,8 @@ flowchart TD
 |---|---|
 | index.html | Entrada web, estructura visual, menú, botones globales y orden de carga de scripts. |
 | js/router.js | Arranque, lectura de hash, navegación, bootstrap de DB, registro del Service Worker y comprobación de Releases en Android. |
-| js/movimientos.js | Implementa Compra, Ventas, Gastos e In/Out; Compra y Ventas comparten la ruta Operaciones, no sus datos. |
+| js/movimientos.js | Listado paginado común, duplicado de registros y pestañas de Operaciones. Compra y Ventas comparten la ruta, no sus datos. |
+| js/ventas.js, js/compras.js, js/gastos.js, js/in-out.js | Formularios, detalle, edición y efectos de balance de cada tipo de movimiento. |
 | js/historial.js | Historial de envíos y detalles/edición de envíos. No reemplaza el historial de cada módulo. |
 | js/entregas.js | Pestañas Destinatarios, Mensajeros y Compradores; proporciona selectores usados por envíos, ventas y deudas. |
 | js/balance-base.js | Funciones contables compartidas: cálculo/ajuste de saldos y efectos de operaciones. |

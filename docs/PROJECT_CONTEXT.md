@@ -50,7 +50,7 @@ Remesas es una aplicación local de gestión de un negocio de remesas: clientes,
 
 ## Validación
 
-El repositorio no contiene actualmente una suite automatizada de pruebas. La validación funcional se realiza con comprobaciones manuales enfocadas al área afectada; consulta `docs/DEPENDENCY_MAP.md` y registra qué se verificó realmente.
+El repositorio incluye pruebas automáticas en `tests/` (Playwright, datos ficticios; ver `tests/README.md`). Se ejecutan con `cd tests && npm install && npm test` o desde Actions → **Pruebas** (solo manual). Cubren los flujos principales, no toda la app: lo que no cubran sigue requiriendo comprobación manual. Indica siempre qué se ejecutó realmente. Consulta `docs/DEPENDENCY_MAP.md` para las comprobaciones manuales por área.
 
 
 ## Compradores, deuda virtual y transferencias (2026-11-01)

@@ -25,6 +25,10 @@ Antes de editar código o configuración:
 
 El workflow `.github/workflows/build-apk.yml` debe conservar exclusivamente `workflow_dispatch`. Nunca agregues `push`, `pull_request`, `schedule` ni otros disparadores automáticos sin autorización expresa. **No compiles ni publiques una APK salvo que la persona usuaria lo solicite expresamente.** Un commit o push de documentación/código no debe consumir cuota compilando APK.
 
+## Pruebas
+
+Antes de publicar un cambio funcional ejecuta `cd tests && npm install && npm test` (ver `tests/README.md`). Si cambias un texto o id que una prueba comprueba, actualiza la prueba en el mismo commit; si agregas lógica que afecta saldos o deudas, agrega su comprobación. El workflow `.github/workflows/tests.yml` es solo manual.
+
 ## Compatibilidad de agentes
 
 - Codex y herramientas compatibles: sigue este `AGENTS.md` y `docs/INVARIANTS.md`.

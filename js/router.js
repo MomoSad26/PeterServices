@@ -303,13 +303,17 @@ const REVISION_APK_CADA_MS = 6*3600*1000;
 function versionApkInstalada(){
   try{ return Number(window.AndroidBridge.getVersionCode()) || 0; }catch(e){ return 0; }
 }
-async function revisarActualizacionApk(){
-  if(!(window.AndroidBridge && window.AndroidBridge.getVersionCode)) return;
+// Devuelve 'no_apk' | 'al_dia' | 'hay_nueva' | 'sin_conexion'. Con
+// {forzar:true} (botón de Ajustes) consulta ahora, sin esperar las 6 horas.
+async function revisarActualizacionApk({forzar=false} = {}){
+  if(!(window.AndroidBridge && window.AndroidBridge.getVersionCode)) return 'no_apk';
   const instalada = versionApkInstalada();
-  if(!instalada) return;
+  if(!instalada) return 'no_apk';
   let estado = {};
+  let consultaFallida = false;
   try{ estado = JSON.parse(localStorage.getItem(REVISION_APK_KEY) || '{}') || {}; }catch(e){}
-  if(navigator.onLine !== false && Date.now() - (estado.revisado||0) >= REVISION_APK_CADA_MS){
+  if(forzar || (navigator.onLine !== false && Date.now() - (estado.revisado||0) >= REVISION_APK_CADA_MS)){
+    consultaFallida = true;
     try{
       const res = await fetch(RELEASES_API, {cache:'no-store', headers:{'Accept':'application/vnd.github+json'}});
       if(res.ok){
@@ -317,10 +321,16 @@ async function revisarActualizacionApk(){
         const m = /(\d+)\s*$/.exec(String(rel.tag_name||''));   // "v1.0.104" → 104 (= versionCode)
         estado = {revisado: Date.now(), versionDisponible: m ? Number(m[1]) : 0};
         try{ localStorage.setItem(REVISION_APK_KEY, JSON.stringify(estado)); }catch(e){}
+        consultaFallida = false;
       }
     }catch(e){ /* sin conexión: se vuelve a intentar más tarde */ }
   }
-  if((estado.versionDisponible||0) > instalada) mostrarAvisoApkNueva(estado.versionDisponible);
+  if((estado.versionDisponible||0) > instalada){
+    if(forzar) mostrarAvisoApkNueva._cerrado = false; // lo pidió el usuario: se vuelve a mostrar
+    mostrarAvisoApkNueva(estado.versionDisponible);
+    return 'hay_nueva';
+  }
+  return consultaFallida ? 'sin_conexion' : 'al_dia';
 }
 function mostrarAvisoApkNueva(version){
   if(document.getElementById('apk-banner') || mostrarAvisoApkNueva._cerrado) return;

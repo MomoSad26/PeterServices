@@ -11,6 +11,11 @@ function mergeImport(incoming){
   const tablas=['divisas','paises','monedas','clientes','trabajadores','destinatarios','mensajeros','compradores','envios','ventas','compras','gastos','in_out','transferencias','deudas'];
   const mapas={};tablas.forEach(k=>mapas[k]=new Map());
   const divisasNuevas=new Set();
+  // Operaciones: cada registro local solo puede emparejarse con UN registro
+  // del archivo. Sin esto, dos operaciones idénticas del mismo minuto (p. ej.
+  // un envío y su duplicado) se importaban como una sola y la segunda se perdía.
+  const OPERACIONES=['envios','ventas','compras','gastos','in_out','transferencias','deudas'];
+  const emparejados={};OPERACIONES.forEach(k=>emparejados[k]=new Set());
   const norm=v=>normalizarTexto(String(v||''));
   const num=v=>Number.isFinite(Number(v))?Number(v):0;
   const ts=r=>num(r.fecha_hora||r.fecha||r.fecha_registro||0);
@@ -50,8 +55,10 @@ function mergeImport(incoming){
       if((t==='ventas'||t==='deudas')&&r.comprador_id!=null&&mapas.compradores.has(r.comprador_id))r.comprador_id=mapas.compradores.get(r.comprador_id);
       if(t==='deudas'&&r.origen&&r.origen_id!=null){const ot=r.origen==='venta'?'ventas':(r.origen==='compra'?'compras':(r.origen==='envio'?'envios':null));if(ot&&mapas[ot].has(r.origen_id))r.origen_id=mapas[ot].get(r.origen_id);}
       const k=clave(t,r);
-      const existing=DB[t].find(x=>clave(t,x)===k);
+      const usados=emparejados[t];
+      const existing=DB[t].find(x=>!(usados&&usados.has(x.id))&&clave(t,x)===k);
       if(existing){
+        if(usados)usados.add(existing.id);
         if(r.id!=null)mapas[t].set(r.id,existing.id);
         if(t==='divisas'){
           const visibleImportado=r.nombre_visible||r.nombre;
@@ -81,6 +88,7 @@ function mergeImport(incoming){
         r.nombre_visible=visible;
       }
       const oldId=r.id;r.id=nextId(t);DB[t].push(r);if(oldId!=null)mapas[t].set(oldId,r.id);resumen.insertados++;
+      if(usados)usados.add(r.id);
       if(t==='divisas')divisasNuevas.add(r.nombre);
       const add=(divisa,delta)=>{if(divisa&&!divisasNuevas.has(divisa))adjustBalance(divisa,delta);};
       if(t==='envios'){

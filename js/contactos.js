@@ -84,14 +84,39 @@
     input.addEventListener('pointerdown', function(){ campoTelefonoActivo = input; });
   }
 
+  /* Aviso (web y APK): un número escrito a mano sin código de país hace que
+     WhatsApp abra un chat equivocado. Solo advierte: no cambia lo escrito ni
+     impide guardar. */
+  function faltaCodigoPais(valor){
+    const v = String(valor||'').trim();
+    if(!/\d/.test(v)) return false;               // vacío o sin dígitos: nada que avisar
+    return !(v.startsWith('+') || v.replace(/\D/g,'').startsWith('00'));
+  }
+  window.faltaCodigoPais = faltaCodigoPais;
+  function instalarAvisoCodigoPais(input){
+    if(input.dataset.avisoPais==='1' || !input.parentNode) return;
+    input.dataset.avisoPais = '1';
+    const aviso = document.createElement('div');
+    aviso.className = 'hint telefono-aviso-pais';
+    aviso.style.color = 'var(--red-text)';
+    aviso.textContent = '⚠️ Falta el código de país (ej. +53 5…). Sin él, WhatsApp puede abrir un chat equivocado.';
+    aviso.hidden = true;
+    (input.closest('.telefono-contacto-wrap') || input).insertAdjacentElement('afterend', aviso);
+    const actualizar = ()=>{ aviso.hidden = !faltaCodigoPais(input.value); };
+    input.addEventListener('input', actualizar);
+    input.addEventListener('change', actualizar);
+    actualizar();
+  }
+  function prepararCampo(input){ instalarBoton(input); instalarAvisoCodigoPais(input); }
+
   function revisarNodo(nodo){
     if(!nodo || nodo.nodeType!==1) return;
-    if(nodo.matches && nodo.matches('input[type="tel"]')) instalarBoton(nodo);
-    if(nodo.querySelectorAll) nodo.querySelectorAll('input[type="tel"]').forEach(instalarBoton);
+    if(nodo.matches && nodo.matches('input[type="tel"]')) prepararCampo(nodo);
+    if(nodo.querySelectorAll) nodo.querySelectorAll('input[type="tel"]').forEach(prepararCampo);
   }
 
   function iniciar(){
-    document.querySelectorAll('input[type="tel"]').forEach(instalarBoton);
+    document.querySelectorAll('input[type="tel"]').forEach(prepararCampo);
     document.addEventListener('focusin', function(event){
       if(event.target && event.target.matches && event.target.matches('input[type="tel"]')){
         campoTelefonoActivo = event.target;

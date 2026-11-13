@@ -28,6 +28,7 @@
 - `manifest.json`, `icons/`: metadatos e iconos de la PWA.
 - `android/`: contenedor Android WebView y configuración de APK.
 - `.github/workflows/build-apk.yml`: compilación y publicación manual de APK.
+- `tests/`: pruebas automáticas con Playwright (`tests/run.js`); `.github/workflows/tests.yml` las ejecuta solo de forma manual.
 
 ## Mapa funcional de JavaScript
 
@@ -45,9 +46,9 @@ El impacto indica la consecuencia típica de una regresión, no una prioridad pa
 | Envíos | `js/envios.js`, `js/precio-especial.js` | cambien formularios o reglas de creación | Crítico: saldos, deudas e historial |
 | Entregas y compradores | `js/entregas.js` | cambien destinatarios, mensajeros o compradores | Alto: contactos y referencias históricas |
 | Transferencias internas | `js/transferencias.js` | cambien movimientos entre divisas | Crítico: balance de origen/destino, historial por divisa y reversión |
-| Ventas y compradores | `js/movimientos.js`, `js/entregas.js` | cambien ventas o asociación de compradores | Crítico: snapshot de contacto, deuda vinculada, búsqueda y balance |
+| Ventas y compradores | `js/ventas.js`, `js/entregas.js` | cambien ventas o asociación de compradores | Crítico: snapshot de contacto, deuda vinculada, búsqueda y balance |
 | Historial | `js/historial.js`, `js/paginacion.js`, `js/archivo.js` | cambien filtros, páginas o archivado | Alto: consulta y recuperación de operaciones |
-| Operaciones (Compra/Ventas) | `index.html`, `js/router.js`, `js/movimientos.js`, `js/panel.js`, `js/busqueda.js` | cambien menú, pestañas, accesos del Panel o resultados del buscador | Alto por navegación; crítico por saldos y deudas. La ruta común es `#/operaciones`; las tablas y lógicas de Compra y Ventas siguen separadas. |
+| Operaciones (Compra/Ventas) | `index.html`, `js/router.js`, `js/movimientos.js` (pestañas), `js/compras.js`, `js/ventas.js`, `js/panel.js`, `js/busqueda.js` | cambien menú, pestañas, accesos del Panel o resultados del buscador | Alto por navegación; crítico por saldos y deudas. La ruta común es `#/operaciones`; las tablas y lógicas de Compra y Ventas siguen separadas. |
 | Deudas | `js/deudas.js` | cambien creación, cierre, cobro o pago | Crítico: obligaciones, consolidación virtual, notificación y saldos |
 | Respaldo y exportación | `js/respaldos.js`, `js/importacion.js`, `js/xlsx.js` | cambien importación, exportación, fusión, cifrado o Excel | Crítico: recuperación y portabilidad de datos |
 | Panel | `js/panel.js` | cambie el resumen operativo Hoy/Ayer | Medio: consistencia de indicadores |

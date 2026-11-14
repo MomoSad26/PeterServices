@@ -194,7 +194,16 @@ function pruebasEstaticas(){
     });
     const splitBase1=await saldo(D1), splitBase2=await saldo(D2), splitBase3=await saldo(extra.divisa);
     await ir('#/envio/cliente/' + cid);
+    const ordenNuevo = await p.evaluate(selectores=>{
+      const els=selectores.map(sel=>document.querySelector(sel));
+      return els.every((el,i)=>!!el&&(!i||(els[i-1].compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)));
+    },['#ef-fecha','#ef-entity-picker','#ef-cantidad','#ef-moneda','#ef-precio','#ef-cantidad-entregar','#ef-entregas-list','#ef-cotizado','#ef-ganancia','#ef-divisa-ganancia','#ef-forma','#ef-ganancias-extra','#ef-descuenta','#ef-nota','#ef-revisar']);
+    check(ordenNuevo,'el formulario nuevo respeta el orden solicitado de fecha a botón guardar');
     await escribir('#ef-cantidad','10'); await escribir('#ef-precio','1'); await escribir('#ef-cotizado','1.5');
+    check(await p.locator('#ef-cantidad-entregar').inputValue()==='10','la cantidad de referencia se calcula como cantidad enviada por precio');
+    await escribir('#ef-cantidad-entregar','15');
+    await escribir('#ef-cantidad','20'); await escribir('#ef-cantidad','10');
+    check(await p.locator('#ef-cantidad-entregar').inputValue()==='15','la referencia conserva el ajuste manual y no modifica las entregas');
     await escribir('#ef-entregas-list [data-cant-split="0"]','100');
     await escribir('#ef-entregas-list [data-div-split="0"]',D1);
     await clic('#ef-entregas-list [data-pick-split="0"]'); await clic('#sel-ent-list [data-pick]',350);
@@ -209,7 +218,15 @@ function pruebasEstaticas(){
     await escribir('#ef-ganancias-extra [data-div-extra="0"]',extra.divisa);
     await clic('#ef-ganancias-extra [data-forma-extra="0"] .pill[data-v="Transferencia"]',200);
     await clic('#ef-descuenta .pill[data-v="0"]');
-    await clic('#ef-revisar',300); await clic('#es-confirmar',450);
+    await clic('#ef-revisar',300);
+    const clavesResumen=await p.locator('.modal-backdrop .card .sumrow .k').allTextContents();
+    const resumenVisual=await p.locator('.modal-backdrop .card').innerText();
+    check(clavesResumen[0]==='Fecha y hora' && clavesResumen[1]==='Cliente' && clavesResumen[2]==='Cantidad enviada' &&
+      clavesResumen[3]==='Moneda' && clavesResumen[4]==='Precio' && clavesResumen[5]==='Cantidad a entregar (referencia)',
+      'el resumen mantiene la secuencia inicial del formulario');
+    check(resumenVisual.includes('Cantidad a entregar (referencia)')&&resumenVisual.includes('15'),
+      'el resumen muestra la referencia manual sin divisa');
+    await clic('#es-confirmar',450);
     const envioSplitId=await p.evaluate(()=>DB.envios[DB.envios.length-1].id);
     const deudasSplit=await p.evaluate(id=>DB.deudas.filter(d=>d.origen==='envio'&&d.origen_id===id&&d.estado==='pendiente').map(d=>({id:d.id,detalle:d.origen_detalle_id,divisa:d.divisa,monto:d.monto})),envioSplitId);
     check(deudasSplit.length===2 && new Set(deudasSplit.map(x=>x.detalle)).size===2,'se crean dos deudas independientes, cada una vinculada a su entrega');
@@ -227,6 +244,12 @@ function pruebasEstaticas(){
     check((await texto('.card')).includes('Ganancia adicional') && (await texto('.card')).includes('Lia Destino'),
       'el detalle muestra destinatarios, entregas y ganancias adicionales');
     await clic('#ed-edit',350);
+    const ordenEdicion = await p.evaluate(selectores=>{
+      const els=selectores.map(sel=>document.querySelector(sel));
+      return els.every((el,i)=>!!el&&(!i||(els[i-1].compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)));
+    },['#ee-fecha','#ee-entity-picker','#ee-cantidad','#ee-moneda','#ee-precio','#ee-cantidad-entregar','#ee-entregas-list','#ee-cotizado','#ee-ganancia','#ee-divisa-ganancia','#ee-forma','#ee-ganancias-extra','#ee-descuenta','#ee-nota','#ee-save']);
+    check(ordenEdicion,'el formulario de edición respeta el mismo orden que el nuevo');
+    check(await p.locator('#ee-cantidad-entregar').inputValue()==='10','la edición muestra el total de referencia calculado');
     await escribir('#ee-entregas-list [data-cant-split="1"]','210');
     await clic('#ee-save',250); await clic('#cd-ok',450);
     const deudaEditada=await p.evaluate(id=>{const d=DB.deudas.find(x=>x.id===id);return d?{monto:d.monto,estado:d.estado}:null;},deudaD2.id);

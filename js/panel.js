@@ -77,10 +77,17 @@ function renderPanel(content, conservarDia=false){
   const cobrarViejas = (DB.deudas||[]).filter(d=>d.tipo==='me_deben' && esVieja(d)).length;
   const pagarViejas = (DB.deudas||[]).filter(d=>d.tipo==='pagar_a' && esVieja(d)).length;
   const viejasTexto = [cobrarViejas?`${cobrarViejas} me deben`:'', pagarViejas?`${pagarViejas} pagar a`:''].filter(Boolean).join(' · ');
-  const gananciasPorDivisa = panelAgruparMontos(
+  const gananciasAcumuladas = new Map(panelAgruparMontos(
     enviosDiaTodos.slice().sort((a,b)=>Number(b.fecha_hora||0)-Number(a.fecha_hora||0)),
     'divisa_ganancia', e=>e.ganancia
-  );
+  ).map(g=>[g.divisa,g.monto]));
+  enviosDiaTodos.forEach(e=>{
+    obtenerGananciasAdicionalesEnvio(e).forEach(g=>{
+      if(!g.divisa)return;
+      gananciasAcumuladas.set(g.divisa,round2((gananciasAcumuladas.get(g.divisa)||0)+Number(g.cantidad||0)));
+    });
+  });
+  const gananciasPorDivisa=Array.from(gananciasAcumuladas.entries()).map(([divisa,monto])=>({divisa,monto}));
   const gastosPorDivisa = panelAgruparMontos(
     gastosDia.slice().sort((a,b)=>Number(b.fecha_hora||0)-Number(a.fecha_hora||0)),
     'divisa', g=>-Math.abs(Number(g.cantidad)||0)

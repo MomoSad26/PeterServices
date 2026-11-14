@@ -9,7 +9,7 @@ function renderPrecioEspecialForm(content){
     if(p.trabajador_id){ entity = DB.trabajadores.find(t=>t.id===p.trabajador_id && t.activo) || null; entityTipo = entity ? 'trabajador' : null; }
     else if(p.cliente_id){ entity = DB.clientes.find(c=>c.id===p.cliente_id && c.activo) || null; entityTipo = entity ? 'cliente' : null; }
   }
-  const forma = p ? p.forma_ganancia : 'Efectivo';
+  const forma = p ? (p.forma_ganancia || 'Efectivo') : 'Efectivo';
   content.innerHTML = `
     <h1 class="section-title">⭐ Precio especial</h1>
     ${p ? `<div class="badge badge-gold" style="margin:-4px 0 6px;">📋 Duplicado — revise y guarde como envío nuevo</div>` : ''}
@@ -29,12 +29,9 @@ function renderPrecioEspecialForm(content){
     <label class="field-label">Precio *</label>
     <input type="number" inputmode="decimal" step="0.01" id="pe-precio" placeholder="0.00" value="${val(p?.precio)}">
 
-    <label class="field-label">Cantidad pagada (Entregar) *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="pe-pagada" placeholder="0.00" value="${val(p?.cantidad_pagada)}">
-    <div class="hint">Editable manualmente. No hay cálculo automático.</div>
-
-    <label class="field-label">Divisa de entrega *</label>
-    <select id="pe-divisa-entrega" class="picker">${divisaOptionsHtml(p ? p.divisa_entrega : '')}</select>
+    <label class="field-label">ENTREGAS (una por destinatario) *</label>
+    ${entregasEnvioHtml('pe',p?obtenerEntregasEnvio(p):null)}
+    <div class="hint">Cada entrega puede tener un destinatario, cantidad y divisa diferentes.</div>
 
     <label class="field-label">Cotizado a</label>
     <input type="number" inputmode="decimal" step="0.01" id="pe-cotizado" placeholder="Opcional — informativo" value="${val(p?.cotizado_a)}">
@@ -46,10 +43,12 @@ function renderPrecioEspecialForm(content){
     <label class="field-label">Divisa de ganancia *</label>
     <select id="pe-divisa-ganancia" class="picker">${divisaOptionsHtml(p ? p.divisa_ganancia : '')}</select>
 
-    <label class="field-label">Forma de ganancia *</label>
+    <label class="field-label">Forma de ganancia principal *</label>
     <div class="pill-row" id="pe-forma">
       ${['Efectivo','Transferencia','USD'].map(f=>`<div class="pill ${forma===f?'active':''}" data-v="${f}">${f}</div>`).join('')}
     </div>
+    <label class="field-label">GANANCIAS ADICIONALES</label>
+    ${gananciasAdicionalesEnvioHtml('pe')}
 
     <label class="field-label">Fecha y hora del envío *</label>
     <input type="datetime-local" id="pe-fecha" value="${toLocalDatetimeValue(Date.now())}">
@@ -71,9 +70,10 @@ function renderPrecioEspecialForm(content){
   };
 
   bindAddOnSelect(document.getElementById('pe-moneda'), addMoneda, monedaOptionsHtml);
-  bindAddOnSelect(document.getElementById('pe-divisa-entrega'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(document.getElementById('pe-divisa-ganancia'), addDivisa, divisaOptionsHtml);
 
+  const getEntregas=wireEntregasEnvio('pe',p?obtenerEntregasEnvio(p):null);
+  const getGananciasAdicionales=wireGananciasAdicionalesEnvio('pe',p?obtenerGananciasAdicionalesEnvio(p):[]);
   let formaGanancia = forma || 'Efectivo';
   document.querySelectorAll('#pe-forma .pill').forEach(pill=>{
     pill.onclick = ()=>{
@@ -88,8 +88,8 @@ function renderPrecioEspecialForm(content){
     const cantidad_enviada = parseFloat(document.getElementById('pe-cantidad').value);
     const moneda = document.getElementById('pe-moneda').value.toUpperCase();
     const precio = parseFloat(document.getElementById('pe-precio').value);
-    const cantidad_pagada = parseFloat(document.getElementById('pe-pagada').value);
-    const divisa_entrega = document.getElementById('pe-divisa-entrega').value;
+    const entregas=getEntregas();
+    const ganancias_adicionales=getGananciasAdicionales();
     const cotizadoRaw = document.getElementById('pe-cotizado').value.trim();
     const cotizado_a = cotizadoRaw==='' ? null : parseFloat(cotizadoRaw);
     const gananciaRaw = document.getElementById('pe-ganancia').value.trim();
@@ -97,9 +97,11 @@ function renderPrecioEspecialForm(content){
     const nota = document.getElementById('pe-nota').value.trim();
     const fechaVal = document.getElementById('pe-fecha').value;
 
-    if(!cantidad_enviada || !moneda || !precio || gananciaRaw==='' || isNaN(cantidad_pagada) ||
-       !divisa_entrega || !divisa_ganancia || divisa_entrega==='__add__' || divisa_ganancia==='__add__' || !fechaVal){
-      toast('Todos los campos obligatorios deben estar llenos.'); return;
+    const entregasValidas=entregas.length>0&&entregas.every(x=>Number.isFinite(x.cantidad)&&x.cantidad>0&&x.divisa&&x.divisa!=='__add__');
+    const extrasValidas=ganancias_adicionales.every(x=>Number.isFinite(x.cantidad)&&x.cantidad>0&&x.divisa&&x.divisa!=='__add__'&&['Efectivo','Transferencia','USD'].includes(x.forma));
+    if(!Number.isFinite(cantidad_enviada)||cantidad_enviada<=0||!moneda||!Number.isFinite(precio)||precio<=0||gananciaRaw===''||
+       !entregasValidas||!extrasValidas||!divisa_ganancia||divisa_ganancia==='__add__'||!fechaVal){
+      toast('Revise las cantidades, divisas y formas de ganancias.'); return;
     }
     const ganancia = parseFloat(gananciaRaw);
     const fecha_hora = new Date(fechaVal).getTime();
@@ -108,9 +110,11 @@ function renderPrecioEspecialForm(content){
       tipo:'precio_especial',
       cliente_id: entityTipo==='cliente' ? entity.id : null,
       trabajador_id: entityTipo==='trabajador' ? entity.id : null,
-      cantidad_enviada, moneda, precio, cantidad_pagada, cotizado_a, ganancia,
-      divisa_entrega, divisa_ganancia, forma_ganancia: formaGanancia, nota,
-      fecha_hora, descuenta_ahora: 1
+      cantidad_enviada, moneda, precio, cantidad_pagada:entregas[0].cantidad,
+      cotizado_a, ganancia, divisa_entrega:entregas[0].divisa, divisa_ganancia,
+      forma_ganancia: formaGanancia, nota, fecha_hora, descuenta_ahora:1,
+      entregas:entregas.map(x=>({...x,id:x.id||nuevoIdEntregaEnvio()})),ganancias_adicionales,
+      destinatario_id:entregas[0].destinatario_id??null,destinatario_nombre:entregas[0].destinatario_nombre||''
     };
 
     function goToSummary(){
@@ -121,9 +125,11 @@ function renderPrecioEspecialForm(content){
           <div class="sumrow"><span class="k">${entityTipo==='trabajador'?'Trabajador':'Cliente'}</span><span class="v">${escapeHtml(entity.nombre)}</span></div>
           <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(cantidad_enviada)} ${escapeHtml(moneda)}</span></div>
           <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(precio)}</span></div>
-          <div class="sumrow"><span class="k">Cantidad pagada</span><span class="v">${fmtMoney(cantidad_pagada)} ${escapeHtml(divisa_entrega)}</span></div>
+          <div style="font-weight:800;margin:10px 0 4px;">Entregas</div>
+          ${entregas.map((x,i)=>`<div class="sumrow"><span class="k">${i+1}. ${escapeHtml(x.destinatario_nombre||entity.nombre)}</span><span class="v">${fmtMoney(x.cantidad)} ${escapeDivisa(x.divisa)}</span></div>`).join('')}
           <div class="sumrow"><span class="k">Cotizado a</span><span class="v">${cotizado_a!==null?fmtMoney(cotizado_a):'—'}</span></div>
-          <div class="sumrow"><span class="k">Ganancia</span><span class="v">${fmtMoney(ganancia)} ${escapeHtml(divisa_ganancia)}</span></div>
+          <div class="sumrow"><span class="k">Ganancia principal</span><span class="v">${fmtMoney(ganancia)} ${escapeDivisa(divisa_ganancia)}</span></div>
+          ${ganancias_adicionales.map((g,i)=>`<div class="sumrow"><span class="k">Ganancia adicional ${i+1} · ${escapeHtml(g.forma)}</span><span class="v">${fmtMoney(g.cantidad)} ${escapeDivisa(g.divisa)}</span></div>`).join('')}
           <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(fecha_hora)}</span></div>
         </div>
         <div class="modal-actions">

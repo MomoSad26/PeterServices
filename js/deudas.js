@@ -216,12 +216,8 @@ function estadoBadgeHtml(estado){
 
 function deudaDescuentaAlPagar(d){
   if(d.origen==='envio'){
-    const envio = DB.envios.find(e => e.id === d.origen_id);
-    // Si la divisa entregada es igual a la de la ganancia, la ganancia
-    // ya representa el efecto completo: pagar esta deuda NO descuenta
-    // nada más del balance.
-    if(envio) return !mismasDivisas(envio.divisa_entrega, envio.divisa_ganancia);
-    return true;
+    const envio=DB.envios.find(e=>e.id===d.origen_id);
+    return deudaEnvioDescuentaBalance(d,envio);
   }
   if(d.origen==='compra') return true;
   return !!d.afecta_balance;
@@ -381,7 +377,15 @@ function openDeudaDetalle(id, onChange){
   const esMeDeben = d.tipo==='me_deben';
   // Datos de entrega (Menú Entregas): solo en deudas que vienen de un envío.
   const envioDeuda = (!esMeDeben && d.origen==='envio') ? DB.envios.find(x=>x.id===d.origen_id) : null;
-  const puedeEnviarAMensajero = !!envioDeuda && d.estado==='pendiente' && !!destinatarioActivoDeEnvio(envioDeuda);
+  const splitDeuda = envioDeuda ? entregaEnvioDeDeuda(d,envioDeuda) : null;
+  const envioParaMensajero = envioDeuda && splitDeuda ? {
+    ...envioDeuda, split_id:splitDeuda.id, cantidad_pagada:splitDeuda.cantidad, divisa_entrega:splitDeuda.divisa,
+    destinatario_id:splitDeuda.destinatario_id, destinatario_nombre:splitDeuda.destinatario_nombre,
+    mensajero_notificado_id:splitDeuda.mensajero_notificado_id,
+    mensajero_notificado_nombre:splitDeuda.mensajero_notificado_nombre,
+    mensajero_notificado_fecha:splitDeuda.mensajero_notificado_fecha
+  } : envioDeuda;
+  const puedeEnviarAMensajero = !!envioParaMensajero && d.estado==='pendiente' && !!destinatarioActivoDeEnvio(envioParaMensajero);
   openModal(`
     <div class="modal-title">${esMeDeben?'Me deben':'Pagar a'} — ${escapeHtml(textoDivisasVisibles(d.persona))}</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:8px;">
@@ -391,8 +395,8 @@ function openDeudaDetalle(id, onChange){
       <div class="sumrow"><span class="k">Etiqueta</span><span class="v">${esMeDeben ? meDebenBadgeHtml(d) : afectaBalanceBadgeHtml(d)}</span></div>
       <div class="sumrow"><span class="k">Estado</span><span class="v">${estadoBadgeHtml(d.estado)}</span></div>
       ${d.fecha_cierre ? `<div class="sumrow"><span class="k">${esMeDeben?'Fecha de cobro':'Fecha de pago'}</span><span class="v">${fmtDate(d.fecha_cierre)}</span></div>` : ''}
-      ${envioDeuda && envioDeuda.destinatario_id!=null ? `<div class="sumrow"><span class="k">Destinatario</span><span class="v">${escapeHtml(destinatarioNombreDeEnvio(envioDeuda))}</span></div>` : ''}
-      ${envioDeuda ? `<div class="sumrow" id="dd-mensajero-row" style="${envioDeuda.mensajero_notificado_fecha?'':'display:none;'}"><span class="k">Mensajero notificado</span><span class="v" id="dd-mensajero">${escapeHtml(mensajeroNotificadoTexto(envioDeuda))}</span></div>` : ''}
+      ${envioParaMensajero && envioParaMensajero.destinatario_id!=null ? `<div class="sumrow"><span class="k">Destinatario</span><span class="v">${escapeHtml(destinatarioNombreDeEnvio(envioParaMensajero))}</span></div>` : ''}
+      ${envioParaMensajero ? `<div class="sumrow" id="dd-mensajero-row" style="${envioParaMensajero.mensajero_notificado_fecha?'':'display:none;'}"><span class="k">Mensajero notificado</span><span class="v" id="dd-mensajero">${escapeHtml(mensajeroNotificadoTexto(envioParaMensajero))}</span></div>` : ''}
       <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(d.nota || 'Sin nota')}</span></div>
     </div>
     ${puedeEnviarAMensajero ? `<div class="modal-actions"><button class="btn btn-primary btn-block" id="dd-mensajero-btn">📤 Enviar al mensajero</button></div>` : ''}
@@ -410,11 +414,9 @@ function openDeudaDetalle(id, onChange){
   }
   document.getElementById('dd-aceptar').onclick = volverDesdeDetalleMovimiento;
   const mensajeroBtn = document.getElementById('dd-mensajero-btn');
-  if(mensajeroBtn) mensajeroBtn.onclick = ()=> enviarEntregaAMensajero(envioDeuda, ()=>{
-    // Al volver del selector, este detalle sigue abierto: se actualiza el dato.
-    const fila = document.getElementById('dd-mensajero-row');
-    const txt = document.getElementById('dd-mensajero');
-    if(fila && txt){ txt.textContent = mensajeroNotificadoTexto(envioDeuda); fila.style.display = ''; }
+  if(mensajeroBtn) mensajeroBtn.onclick = ()=> enviarEntregaAMensajero(envioParaMensajero, ()=>{
+    const fila=document.getElementById('dd-mensajero-row'),txt=document.getElementById('dd-mensajero');
+    if(fila&&txt){txt.textContent=mensajeroNotificadoTexto(envioParaMensajero);fila.style.display='';}
   });
 
   const cerrarBtn = document.getElementById('dd-cerrar');
@@ -433,18 +435,20 @@ function openDeudaDetalle(id, onChange){
           //  - Si son divisas DISTINTAS, sí hay que restar la entrega
           //    de su propia divisa, porque esa salida de dinero nunca
           //    se había registrado (la ganancia se sumó en otra divisa).
-          const mismaDivisaEnvio = mismasDivisas(envioOrigen.divisa_entrega, envioOrigen.divisa_ganancia);
-          const msg = mismaDivisaEnvio
-            ? `Confirmar que se realizó la entrega de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? La ganancia de este envío ya fue reconocida al registrarlo, así que esta acción NO modifica el balance general.`
-            : `Confirmar pago de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción RESTARÁ ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} del balance general (la ganancia ya fue reconocida en otra divisa al registrar el envío).`;
+          const descuentaAlPagar=deudaEnvioDescuentaBalance(d,envioOrigen);
+          const msg = descuentaAlPagar
+            ? `Confirmar entrega de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción RESTARÁ el monto de esta entrega del balance general.`
+            : `Confirmar entrega de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? La ganancia de este envío ya fue reconocida en esta divisa, así que esta acción NO modificará el balance general.`;
           confirmDialog(msg, ()=>{
             d.estado = 'pagado'; d.fecha_cierre = Date.now();
-            if(!mismaDivisaEnvio){
-              adjustBalance(d.divisa, -d.monto);
-            }
+            if(descuentaAlPagar) adjustBalance(d.divisa,-Number(d.monto||0));
             save(); closeModal(); toast('Envío marcado como pagado — pasó al Historial'); onChange && onChange();
             // El pago ya quedó guardado; ahora solo se OFRECE avisar (cliente o trabajador).
-            ofrecerNotificarWhatsApp(envioOrigen, d.fecha_cierre);
+            const entregaNotificada=entregaEnvioDeDeuda(d,envioOrigen);
+            const envioNotificacion=entregaNotificada?{...envioOrigen,split_id:entregaNotificada.id,
+              cantidad_pagada:entregaNotificada.cantidad,divisa_entrega:entregaNotificada.divisa,
+              destinatario_id:entregaNotificada.destinatario_id,destinatario_nombre:entregaNotificada.destinatario_nombre}:envioOrigen;
+            ofrecerNotificarWhatsApp(envioNotificacion,d.fecha_cierre);
           }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
           return;
         }
@@ -483,9 +487,8 @@ function openDeudaDetalle(id, onChange){
       } else if(d.tipo==='pagar_a' && d.estado==='pagado'){
         if(d.origen==='envio'){
           const envioOrigen = DB.envios.find(x=>x.id===d.origen_id);
-          const mismaDivisaEnvio = envioOrigen && mismasDivisas(envioOrigen.divisa_entrega, envioOrigen.divisa_ganancia);
-          if(!mismaDivisaEnvio){
-            adjustBalance(d.divisa, d.monto);
+          if(deudaEnvioDescuentaBalance(d,envioOrigen)){
+            adjustBalance(d.divisa,Number(d.monto||0));
           }
         } else {
           const restaAlPagar = d.afecta_balance || d.origen==='compra';
@@ -533,20 +536,17 @@ function destinatarioWhatsAppEnvio(envio){
   if(!persona || !limpiarNumeroWhatsApp(persona.telefono)) return null;
   return {persona, rol};
 }
-function mensajeWhatsAppEnvioEntregado(dest, envio, fechaEntrega){
-  const datos =
-    `Cantidad: ${fmtMoney(envio.cantidad_pagada)} ${nombreDivisaVisible(envio.divisa_entrega)}\n` +
-    `Fecha ${fechaDDMMAAAA(fechaEntrega)}\n`;
+function mensajeWhatsAppEnvioEntregado(dest,envio,fechaEntrega){
+  const splits=envio.split_id!=null
+    ? [{cantidad:envio.cantidad_pagada,divisa:envio.divisa_entrega,destinatario_nombre:envio.destinatario_nombre}]
+    : obtenerEntregasEnvio(envio);
+  const datos=splits.length>1
+    ? splits.map((x,i)=>`Entrega ${i+1}: ${fmtMoney(x.cantidad)} ${nombreDivisaVisible(x.divisa)}${x.destinatario_nombre?' — '+x.destinatario_nombre:''}`).join('\n')+`\nFecha ${fechaDDMMAAAA(fechaEntrega)}\n`
+    : `Cantidad: ${fmtMoney(splits[0]?.cantidad??envio.cantidad_pagada)} ${nombreDivisaVisible(splits[0]?.divisa||envio.divisa_entrega)}\nFecha ${fechaDDMMAAAA(fechaEntrega)}\n`;
   if(dest.rol==='trabajador'){
-    return `Hola ${dest.persona.nombre},\n` +
-      `La remesa de ${fmtMoney(envio.cantidad_enviada)} ${envio.moneda} que usted gestionó fue entregada.\n` +
-      datos +
-      `Muchas gracias por su trabajo.`;
+    return `Hola ${dest.persona.nombre},\nLa remesa de ${fmtMoney(envio.cantidad_enviada)} ${envio.moneda} que usted gestionó fue entregada.\n`+datos+`Muchas gracias por su trabajo.`;
   }
-  return `Hola ${dest.persona.nombre},\n` +
-    `Su envío de ${fmtMoney(envio.cantidad_enviada)} ${envio.moneda} fue entregado.\n` +
-    datos +
-    `Muchas gracias por confiar en nosotros.`;
+  return `Hola ${dest.persona.nombre},\nSu envío de ${fmtMoney(envio.cantidad_enviada)} ${envio.moneda} fue entregado.\n`+datos+`Muchas gracias por confiar en nosotros.`;
 }
 function abrirWhatsAppEnvio(dest, envio, fechaEntrega){
   const numero = limpiarNumeroWhatsApp(dest && dest.persona.telefono);

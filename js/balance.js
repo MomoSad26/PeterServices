@@ -39,26 +39,17 @@ function computeFilteredBalance(period){
     totals[divisa] = round2((totals[divisa] || 0) + Number(monto || 0));
   }
 
-     // ENVÍOS
+     // ENVÍOS: los movimientos se agrupan por la fecha del envío.
   DB.envios.filter(e => inRange(e.fecha_hora)).forEach(e => {
-    const entrega = Number(e.cantidad_pagada || 0);
-    const ganancia = Number(e.ganancia || 0);
-    const mismaDivisa = mismasDivisas(e.divisa_entrega, e.divisa_ganancia);
-
+    const entregas=obtenerEntregasEnvio(e);
     if(envioDescuentaAhora(e)){
-      // Switch ON: se resta la entrega y se suma la ganancia (o el total
-      // si es la misma divisa), igual que en el balance general.
-      add(e.divisa_entrega, -entrega);
-      if(mismaDivisa){
-        add(e.divisa_ganancia, entrega + ganancia);
-      } else {
-        add(e.divisa_ganancia, ganancia);
-      }
-    } else {
-      // Switch OFF: la ganancia se reconoce ya mismo, igual que en el
-      // balance general. La entrega queda pendiente en Deudas.
-      add(e.divisa_ganancia, ganancia);
+      entregas.forEach(split=>{
+        add(split.divisa,-Number(split.cantidad||0));
+        if(mismasDivisas(split.divisa,e.divisa_ganancia)) add(e.divisa_ganancia,Number(split.cantidad||0));
+      });
     }
+    add(e.divisa_ganancia,Number(e.ganancia||0));
+    obtenerGananciasAdicionalesEnvio(e).forEach(g=>add(g.divisa,g.cantidad));
   });
 
   // VENTAS
@@ -105,15 +96,9 @@ function computeFilteredBalance(period){
       }
     } else if(d.tipo === 'pagar_a'){
       if(d.origen === 'envio'){
-        const envio = DB.envios.find(e => e.id === d.origen_id);
-        const mismaDivisaEnvio = envio && mismasDivisas(envio.divisa_entrega, envio.divisa_ganancia);
-        if(envio && !mismaDivisaEnvio && d.estado === 'pagado' && inRange(d.fecha_cierre)){
-          // La ganancia YA fue sumada al registrar el envío. Si la divisa
-          // entregada es la misma que la de la ganancia, pagar la deuda
-          // no debe volver a tocar el balance filtrado (sería contarlo
-          // dos veces). Solo si son divisas distintas hay que restar la
-          // entrega aquí, porque esa salida nunca se contó antes.
-          add(d.divisa, -Number(d.monto || 0));
+        const envio=DB.envios.find(e=>e.id===d.origen_id);
+        if(envio&&deudaDescuentaAlPagar(d)&&d.estado==='pagado'&&inRange(d.fecha_cierre)){
+          add(d.divisa,-Number(d.monto||0));
         }
       } else {
         const restaAlPagar = d.afecta_balance || d.origen === 'compra';
@@ -289,24 +274,22 @@ function movimientosDeDivisa(nombre){
   // ENVÍOS
   // =====================================================
   DB.envios.forEach(e=>{
-    const entrega = Number(e.cantidad_pagada||0);
-    const ganancia = Number(e.ganancia||0);
-    const mismaDivisa = mismasDivisas(e.divisa_entrega, e.divisa_ganancia);
-    
+    const concepto=entityNameForEnvio(e);
+    const entregas=obtenerEntregasEnvio(e);
     if(envioDescuentaAhora(e)){
-      // SWITCH ON: descuento inmediato
-      if(e.divisa_entrega === nombre){
-        mov.push({fecha:e.fecha_hora, tipo:'Envío', concepto:entityNameForEnvio(e), monto:-entrega, origen:'envio', origenId:e.id});
-      }
-      if(mismaDivisa && e.divisa_ganancia === nombre){
-        mov.push({fecha:e.fecha_hora, tipo:'Envío', concepto:entityNameForEnvio(e), monto:entrega + ganancia, origen:'envio', origenId:e.id});
-      } else if(e.divisa_ganancia === nombre){
-        mov.push({fecha:e.fecha_hora, tipo:'Envío', concepto:entityNameForEnvio(e), monto:ganancia, origen:'envio', origenId:e.id});
-      }
-    } else if(e.divisa_ganancia === nombre){
-      // SWITCH OFF: la ganancia entra inmediatamente
-      mov.push({fecha:e.fecha_hora, tipo:'Envío', concepto:entityNameForEnvio(e), monto:ganancia, origen:'envio', origenId:e.id});
+      entregas.forEach((split,i)=>{
+        if(split.divisa===nombre) mov.push({fecha:e.fecha_hora,tipo:'Envío',concepto:`Entrega ${i+1} — ${concepto}`,monto:-Number(split.cantidad||0),origen:'envio',origenId:e.id});
+        if(mismasDivisas(split.divisa,e.divisa_ganancia) && e.divisa_ganancia===nombre){
+          mov.push({fecha:e.fecha_hora,tipo:'Envío',concepto:`Reposición entrega ${i+1} — ${concepto}`,monto:Number(split.cantidad||0),origen:'envio',origenId:e.id});
+        }
+      });
     }
+    if(e.divisa_ganancia===nombre){
+      mov.push({fecha:e.fecha_hora,tipo:'Envío',concepto:`Ganancia principal — ${concepto}`,monto:Number(e.ganancia||0),origen:'envio',origenId:e.id});
+    }
+    obtenerGananciasAdicionalesEnvio(e).forEach((g,i)=>{
+      if(g.divisa===nombre) mov.push({fecha:e.fecha_hora,tipo:'Envío',concepto:`Ganancia adicional ${i+1} — ${concepto}`,monto:Number(g.cantidad||0),origen:'envio',origenId:e.id});
+    });
   });
 
   // =====================================================
@@ -403,8 +386,8 @@ function movimientosDeDivisa(nombre){
         // se agrega ningún movimiento extra aquí (evita contar la
         // ganancia dos veces).
         const envio = DB.envios.find(e => e.id === d.origen_id);
-        const mismaDivisaEnvio = envio && mismasDivisas(envio.divisa_entrega, envio.divisa_ganancia);
-        if(!mismaDivisaEnvio && d.estado === 'pagado' && d.fecha_cierre && d.divisa === nombre){
+        const debeDescontar = deudaDescuentaAlPagar(d);
+        if(debeDescontar && d.estado === 'pagado' && d.fecha_cierre && d.divisa === nombre){
           mov.push({
             fecha:d.fecha_cierre,
             tipo:'Envío pagado',

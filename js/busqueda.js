@@ -107,9 +107,12 @@ function busquedaInfoRegistro(seccion,r){
     textos(r.nombre,r.telefono,r.activo?'Activo':'Inactivo');
     fechas(r.fecha_registro);
   }else if(seccion==='envios'){
-    textos(entityNameForEnvio(r),r.tipo,r.moneda,r.divisa_entrega,r.divisa_ganancia,r.forma_ganancia,r.nota,r.archivado?'Archivado':'');
+    const entregas=obtenerEntregasEnvio(r),extras=obtenerGananciasAdicionalesEnvio(r);
+    textos(entityNameForEnvio(r),r.tipo,r.moneda,r.divisa_ganancia,r.forma_ganancia,r.nota,r.archivado?'Archivado':'',
+      ...entregas.flatMap(x=>[x.destinatario_nombre,x.divisa]),...extras.flatMap(x=>[x.divisa,x.forma]));
     fechas(r.fecha_hora);
-    montos(r.cantidad_enviada,r.precio,r.cantidad_pagada,r.cotizado_a,r.ganancia);
+    montos(r.cantidad_enviada,r.precio,r.cotizado_a,r.ganancia,
+      ...entregas.map(x=>x.cantidad),...extras.map(x=>x.cantidad));
   }else if(seccion==='ventas'){
     textos(r.divisa_vendida,r.divisa_recibida,r.comprador_nombre,r.comprador_nombre_completo,r.nota,ventaEstado(r));
     fechas(r.fecha_hora);
@@ -154,7 +157,9 @@ function busquedaDetalleRegistro(seccion,r){
     return [r.telefono,r.activo?'':'Inactivo'].filter(Boolean).join(' · ');
   }
   if(seccion==='envios'){
-    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_enviada)} ${escapeHtml(r.moneda)} · Ganancia: ${fmtMoney(envioGananciaMostrada(r))} ${escapeDivisa(r.divisa_ganancia||'')}${archivado}`;
+    const extras=obtenerGananciasAdicionalesEnvio(r);
+    const gananciaExtra=extras.length?` · +${extras.map(g=>`${fmtMoney(g.cantidad)} ${escapeDivisa(g.divisa)}`).join(' + ')}`:'';
+    return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_enviada)} ${escapeHtml(r.moneda)} · ${resumenEntregasEnvio(r)} · Ganancia: ${fmtMoney(envioGananciaMostrada(r))} ${escapeDivisa(r.divisa_ganancia||'')}${gananciaExtra}${archivado}`;
   }
   if(seccion==='ventas'){
     return `${fmtDateShort(r.fecha_hora)} · ${fmtMoney(r.cantidad_vendida)} ${escapeDivisa(r.divisa_vendida)} → ${fmtMoney(r.cantidad_recibida)} ${escapeDivisa(r.divisa_recibida)} · ${escapeHtml(ventaEstado(r))}${archivado}`;

@@ -69,6 +69,12 @@ function copiaParaDuplicar(registro){
   delete c.id; delete c.archivado; delete c.archivado_en; delete c.fecha_hora;
   // Un envío duplicado es nuevo: todavía no se le avisó a ningún mensajero.
   delete c.mensajero_notificado_id; delete c.mensajero_notificado_nombre; delete c.mensajero_notificado_fecha;
+  // Cada entrega del duplicado comienza sin mensajero notificado.
+  if(Array.isArray(c.entregas)) c.entregas.forEach(x=>{
+    delete x.mensajero_notificado_id;
+    delete x.mensajero_notificado_nombre;
+    delete x.mensajero_notificado_fecha;
+  });
   return c;
 }
 

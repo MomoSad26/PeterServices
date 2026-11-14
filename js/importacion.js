@@ -11,6 +11,8 @@ function mergeImport(incoming){
   const tablas=['divisas','paises','monedas','clientes','trabajadores','destinatarios','mensajeros','compradores','envios','ventas','compras','gastos','in_out','transferencias','deudas'];
   const mapas={};tablas.forEach(k=>mapas[k]=new Map());
   const divisasNuevas=new Set();
+  // Traduce los ids de cada split cuando el envío importado coincide con uno local.
+  const mapasEntregasEnvio=new Map();
   // Operaciones: cada registro local solo puede emparejarse con UN registro
   // del archivo. Sin esto, dos operaciones idénticas del mismo minuto (p. ej.
   // un envío y su duplicado) se importaban como una sola y la segunda se perdía.
@@ -31,9 +33,17 @@ function mergeImport(incoming){
     if(t==='compras')return `${ts(r)}|${norm(r.divisa_comprada)}|${num(r.cantidad_comprada)}|${norm(r.divisa_pagada)}|${num(r.cantidad_pagada)}`;
     if(t==='gastos')return `${ts(r)}|${norm(r.concepto)}|${norm(r.divisa)}|${num(r.cantidad)}`;
     if(t==='in_out')return `${ts(r)}|${norm(r.tipo)}|${norm(r.divisa)}|${num(r.cantidad)}|${norm(r.nota)}`;
-    if(t==='envios')return `${ts(r)}|${norm(r.tipo)}|${r.cliente_id||''}|${r.trabajador_id||''}|${num(r.cantidad_enviada)}|${norm(r.moneda)}|${num(r.cantidad_pagada)}|${norm(r.divisa_entrega)}|${norm(r.divisa_ganancia)}|${num(r.ganancia)}`;
+    if(t==='envios'){
+      const splits=obtenerEntregasEnvio(r).map(x=>[String(x.destinatario_id??''),norm(x.destinatario_nombre),num(x.cantidad),norm(x.divisa)]);
+      const extras=obtenerGananciasAdicionalesEnvio(r).map(x=>[num(x.cantidad),norm(x.divisa),norm(x.forma)]);
+      return `${ts(r)}|${norm(r.tipo)}|${r.cliente_id||''}|${r.trabajador_id||''}|${num(r.cantidad_enviada)}|${norm(r.moneda)}|${num(r.precio)}|${num(r.cotizado_a)}|${num(envioDescuentaAhora(r))}|${norm(r.forma_ganancia)}|${norm(r.divisa_ganancia)}|${num(r.ganancia)}|${norm(r.nota)}|${JSON.stringify(splits)}|${JSON.stringify(extras)}`;
+    }
     if(t==='deudas'){
-      if(r.origen&&r.origen_id!=null){const ot=r.origen==='venta'?'ventas':(r.origen==='compra'?'compras':(r.origen==='envio'?'envios':null));const oi=ot&&mapas[ot].has(r.origen_id)?mapas[ot].get(r.origen_id):r.origen_id;return `origen:${r.origen}:${oi}:${r.tipo}`;}
+      if(r.origen&&r.origen_id!=null){
+        const ot=r.origen==='venta'?'ventas':(r.origen==='compra'?'compras':(r.origen==='envio'?'envios':null));
+        const oi=ot&&mapas[ot].has(r.origen_id)?mapas[ot].get(r.origen_id):r.origen_id;
+        return `origen:${r.origen}:${oi}:${r.tipo}:${String(r.origen_detalle_id??'')}`;
+      }
       return `${norm(r.tipo)}|${norm(r.persona)}|${num(r.monto)}|${norm(r.divisa)}|${ts(r)}|${r.tipo==='me_deben'?meDebenTipo(r):num(r.afecta_balance)}`;
     }
     const copy={...r};delete copy.id;return JSON.stringify(Object.keys(copy).sort().map(k=>[k,copy[k]]));
@@ -51,13 +61,29 @@ function mergeImport(incoming){
         if(mapas.clientes.has(r.cliente_id))r.cliente_id=mapas.clientes.get(r.cliente_id);
         if(mapas.trabajadores.has(r.trabajador_id))r.trabajador_id=mapas.trabajadores.get(r.trabajador_id);
         if(mapas.destinatarios.has(r.destinatario_id))r.destinatario_id=mapas.destinatarios.get(r.destinatario_id);
+        if(Array.isArray(r.entregas))r.entregas.forEach(split=>{
+          if(mapas.destinatarios.has(split.destinatario_id))split.destinatario_id=mapas.destinatarios.get(split.destinatario_id);
+        });
       }
       if((t==='ventas'||t==='deudas')&&r.comprador_id!=null&&mapas.compradores.has(r.comprador_id))r.comprador_id=mapas.compradores.get(r.comprador_id);
-      if(t==='deudas'&&r.origen&&r.origen_id!=null){const ot=r.origen==='venta'?'ventas':(r.origen==='compra'?'compras':(r.origen==='envio'?'envios':null));if(ot&&mapas[ot].has(r.origen_id))r.origen_id=mapas[ot].get(r.origen_id);}
+      if(t==='deudas'&&r.origen==='envio'&&r.origen_id!=null&&r.origen_detalle_id!=null){
+        const splitMapeado=mapasEntregasEnvio.get(`${r.origen_id}:${String(r.origen_detalle_id)}`);
+        if(splitMapeado!=null)r.origen_detalle_id=splitMapeado;
+      }
+      if(t==='deudas'&&r.origen&&r.origen_id!=null){
+        const ot=r.origen==='venta'?'ventas':(r.origen==='compra'?'compras':(r.origen==='envio'?'envios':null));
+        if(ot&&mapas[ot].has(r.origen_id))r.origen_id=mapas[ot].get(r.origen_id);
+      }
       const k=clave(t,r);
       const usados=emparejados[t];
       const existing=DB[t].find(x=>!(usados&&usados.has(x.id))&&clave(t,x)===k);
       if(existing){
+        if(t==='envios'){
+          const sourceSplits=obtenerEntregasEnvio(r),targetSplits=obtenerEntregasEnvio(existing);
+          sourceSplits.forEach((split,i)=>{
+            mapasEntregasEnvio.set(`${original.id}:${String(split.id)}`,String(targetSplits[i]?.id??split.id));
+          });
+        }
         if(usados)usados.add(existing.id);
         if(r.id!=null)mapas[t].set(r.id,existing.id);
         if(t==='divisas'){
@@ -87,13 +113,22 @@ function mergeImport(incoming){
         }
         r.nombre_visible=visible;
       }
-      const oldId=r.id;r.id=nextId(t);DB[t].push(r);if(oldId!=null)mapas[t].set(oldId,r.id);resumen.insertados++;
+      const oldId=r.id;r.id=nextId(t);DB[t].push(r);if(oldId!=null)mapas[t].set(oldId,r.id);
+      if(t==='envios'){
+        obtenerEntregasEnvio(r).forEach(split=>mapasEntregasEnvio.set(`${oldId}:${String(split.id)}`,String(split.id)));
+      }
+      resumen.insertados++;
       if(usados)usados.add(r.id);
       if(t==='divisas')divisasNuevas.add(r.nombre);
       const add=(divisa,delta)=>{if(divisa&&!divisasNuevas.has(divisa))adjustBalance(divisa,delta);};
       if(t==='envios'){
-        const entrega=num(r.cantidad_pagada),ganancia=num(r.ganancia),misma=mismasDivisas(r.divisa_entrega,r.divisa_ganancia);
-        if(envioDescuentaAhora(r)){add(r.divisa_entrega,-entrega);add(r.divisa_ganancia,misma?entrega+ganancia:ganancia);}else add(r.divisa_ganancia,ganancia);
+        const splits=obtenerEntregasEnvio(r);
+        if(envioDescuentaAhora(r))splits.forEach(x=>{
+          add(x.divisa,-num(x.cantidad));
+          if(mismasDivisas(x.divisa,r.divisa_ganancia))add(r.divisa_ganancia,num(x.cantidad));
+        });
+        add(r.divisa_ganancia,num(r.ganancia));
+        obtenerGananciasAdicionalesEnvio(r).forEach(g=>add(g.divisa,num(g.cantidad)));
       }else if(t==='ventas'){add(r.divisa_vendida,-num(r.cantidad_vendida));if(!r.registra_deuda)add(r.divisa_recibida,num(r.cantidad_recibida));}
       else if(t==='compras'){add(r.divisa_comprada,num(r.cantidad_comprada));if(!r.registra_deuda)add(r.divisa_pagada,-num(r.cantidad_pagada));}
       else if(t==='gastos')add(r.divisa,-num(r.cantidad));

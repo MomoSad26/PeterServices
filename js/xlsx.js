@@ -153,22 +153,25 @@ function generarReporteEjecutivo(){
   rows.push([sb('Fecha'), sb('Tipo'), sb('Concepto'), sb('Divisa'), sb('Monto')]);
   const movimientos = [];
   DB.envios.filter(e=>!e.archivado).forEach(e=>{
-    const entrega = Number(e.cantidad_pagada||0);
-    const ganancia = Number(e.ganancia||0);
+    const nombre=entityNameForEnvio(e);
+    const entregas=obtenerEntregasEnvio(e);
     if(envioDescuentaAhora(e)){
-      movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Entrega — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_entrega), monto:-entrega});
-      if(mismasDivisas(e.divisa_entrega, e.divisa_ganancia)){
-        movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Operación — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_ganancia), monto:entrega+ganancia});
-      } else {
-        movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Ganancia — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_ganancia), monto:ganancia});
-      }
-    } else {
-      movimientos.push({fecha:e.fecha_hora, tipo:'Envío', concepto:`Ganancia — ${entityNameForEnvio(e)}`, divisa:nombreDivisaVisible(e.divisa_ganancia), monto:ganancia});
+      entregas.forEach((split,i)=>{
+        movimientos.push({fecha:e.fecha_hora,tipo:'Envío',concepto:`Entrega ${i+1} — ${nombre}`,divisa:nombreDivisaVisible(split.divisa),monto:-Number(split.cantidad||0)});
+        if(mismasDivisas(split.divisa,e.divisa_ganancia)){
+          movimientos.push({fecha:e.fecha_hora,tipo:'Envío',concepto:`Reposición entrega ${i+1} — ${nombre}`,divisa:nombreDivisaVisible(split.divisa),monto:Number(split.cantidad||0)});
+        }
+      });
     }
+    movimientos.push({fecha:e.fecha_hora,tipo:'Envío',concepto:`Ganancia principal — ${nombre}`,divisa:nombreDivisaVisible(e.divisa_ganancia),monto:Number(e.ganancia||0)});
+    obtenerGananciasAdicionalesEnvio(e).forEach((g,i)=>movimientos.push({
+      fecha:e.fecha_hora,tipo:'Envío',concepto:`Ganancia adicional ${i+1} — ${nombre} (${g.forma})`,
+      divisa:nombreDivisaVisible(g.divisa),monto:Number(g.cantidad||0)
+    }));
   });
   DB.deudas.forEach(d=>{
-    if(d.tipo==='pagar_a' && d.origen==='envio' && d.estado==='pagado' && d.fecha_cierre){
-      movimientos.push({fecha:d.fecha_cierre, tipo:'Envío pagado', concepto:`Pago a ${textoDivisasVisibles(d.persona)}`, divisa:nombreDivisaVisible(d.divisa), monto:-(d.monto||0)});
+    if(d.tipo==='pagar_a'&&d.origen==='envio'&&d.estado==='pagado'&&d.fecha_cierre&&deudaDescuentaAlPagar(d)){
+      movimientos.push({fecha:d.fecha_cierre,tipo:'Envío pagado',concepto:`Pago a ${textoDivisasVisibles(d.persona)}`,divisa:nombreDivisaVisible(d.divisa),monto:-Number(d.monto||0)});
     }
   });
   DB.compras.filter(c=>!c.archivado).forEach(c=>{
@@ -192,8 +195,11 @@ function generarReporteEjecutivo(){
   rows.push([sb('Envíos — ganancia total por divisa')]);
   rows.push([sb('Divisa'), sb('Total')]);
   const totEnvios = {};
-  DB.envios.forEach(e=>{ totEnvios[e.divisa_ganancia] = (totEnvios[e.divisa_ganancia]||0) + envioGananciaMostrada(e); });
-  Object.keys(totEnvios).forEach(k=> rows.push([s(nombreDivisaVisible(k)), n(totEnvios[k])]));
+  DB.envios.forEach(e=>{
+    totEnvios[e.divisa_ganancia]=(totEnvios[e.divisa_ganancia]||0)+envioGananciaMostrada(e);
+    obtenerGananciasAdicionalesEnvio(e).forEach(g=>{totEnvios[g.divisa]=(totEnvios[g.divisa]||0)+Number(g.cantidad||0);});
+  });
+  Object.keys(totEnvios).forEach(k=>rows.push([s(nombreDivisaVisible(k)),n(totEnvios[k])]));
   rows.push([]);
 
   rows.push([sb('Compras — total comprado por divisa')]);

@@ -356,10 +356,31 @@ function enviarEntregaAMensajero(envio, onNotificado){
       alertDialog('Mensajero sin teléfono', 'Este mensajero no tiene teléfono configurado. Edítalo para poder notificarlo por WhatsApp.');
       return;
     }
-    // Se guarda solo la ÚLTIMA notificación (se sobrescribe si se reenvía).
-    envio.mensajero_notificado_id = m.id;
-    envio.mensajero_notificado_nombre = m.nombre;
-    envio.mensajero_notificado_fecha = Date.now();
+    // Si la notificación corresponde a un split, se registra allí; así cada
+    // destinatario conserva el mensajero que recibió su propia instrucción.
+    const fechaNotificacion=Date.now();
+    if(envio.split_id!=null){
+      const original=DB.envios.find(x=>x.id===envio.id);
+      const splitOriginal=Array.isArray(original?.entregas)
+        ? original.entregas.find(x=>String(x.id)===String(envio.split_id)) : null;
+      if(splitOriginal){
+        splitOriginal.mensajero_notificado_id=m.id;
+        splitOriginal.mensajero_notificado_nombre=m.nombre;
+        splitOriginal.mensajero_notificado_fecha=fechaNotificacion;
+      }else if(original){
+        original.mensajero_notificado_id=m.id;
+        original.mensajero_notificado_nombre=m.nombre;
+        original.mensajero_notificado_fecha=fechaNotificacion;
+      }
+    }else{
+      const original=DB.envios.find(x=>x.id===envio.id)||envio;
+      original.mensajero_notificado_id=m.id;
+      original.mensajero_notificado_nombre=m.nombre;
+      original.mensajero_notificado_fecha=fechaNotificacion;
+    }
+    envio.mensajero_notificado_id=m.id;
+    envio.mensajero_notificado_nombre=m.nombre;
+    envio.mensajero_notificado_fecha=fechaNotificacion;
     save();
     const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensajeEntregaParaMensajero(destinatario, envio))}`;
     if(window.AndroidBridge && window.AndroidBridge.openExternal) window.AndroidBridge.openExternal(url);

@@ -144,9 +144,11 @@ function pruebasEstaticas(){
 
     async function nuevoEnvio({descuenta, destinatario}){
       await ir('#/envio/cliente/' + cid);
-      if(destinatario){ await clic('#ef-dest-btn'); await clic('#sel-ent-list [data-pick]', 350); }
+      if(destinatario){ await clic('#ef-entregas-list [data-pick-split="0"]'); await clic('#sel-ent-list [data-pick]', 350); }
       await escribir('#ef-cantidad', '100'); await escribir('#ef-precio', '82'); await escribir('#ef-ganancia', '5');
-      await p.evaluate(([a,b])=>{ document.getElementById('ef-divisa-entrega').value=a; document.getElementById('ef-divisa-ganancia').value=b; }, [D1, D2]);
+      await escribir('#ef-entregas-list [data-cant-split="0"]', '8200');
+      await escribir('#ef-entregas-list [data-div-split="0"]', D1);
+      await escribir('#ef-divisa-ganancia', D2);
       await clic(`#ef-descuenta .pill[data-v="${descuenta}"]`);
       await clic('#ef-revisar', 300);
       await clic('#es-confirmar', 450);
@@ -175,11 +177,64 @@ function pruebasEstaticas(){
     await clic('#sel-ent-list [data-pick]', 400);
     check((await ultimoEnlace()).startsWith('https://wa.me/5351112222?text='), 'abre WhatsApp del mensajero');
     check(mensajeDe(await ultimoEnlace())===`👤 Damicela Prueba\n📱 +53 5 2135359\n🧭 Calle 12 #53\n💰 8,200 ${D1}`, 'mensaje al mensajero con monto y divisa:\n' + mensajeDe(await ultimoEnlace()));
-    check(await p.evaluate(()=>DB.envios.some(e=>e.mensajero_notificado_nombre==='Yoel Moto' && e.mensajero_notificado_fecha>0)), 'se guarda el mensajero notificado');
+    check(await p.evaluate(()=>DB.envios.some(e=>(e.entregas||[]).some(x=>x.mensajero_notificado_nombre==='Yoel Moto'&&x.mensajero_notificado_fecha>0))), 'se guarda el mensajero notificado en la entrega correspondiente');
     await clic('#dd-cerrar', 300); await clic('#cd-ok', 450);
     check(await saldo(D1)===a1-8200, `al marcar pagado se resta la entrega de ${D1}`);
     check(await visible('#wa-no'), 'tras pagar se ofrece avisar al cliente');
     await clic('#wa-no', 300);
+
+    seccion('5b. Envío con dos destinatarios y ganancia adicional');
+    const extra = await p.evaluate(()=>{
+      const d={id:nextId('destinatarios'),nombre:'Lia Destino',nombre_completo:'Lia Destino Prueba',
+        telefono:'+53 50000000',direccion:'Calle B',activo:1};
+      DB.destinatarios.push(d);
+      const div=addDivisa('EUR prueba');
+      save();
+      return {destId:d.id,divisa:div.nombre};
+    });
+    const splitBase1=await saldo(D1), splitBase2=await saldo(D2), splitBase3=await saldo(extra.divisa);
+    await ir('#/envio/cliente/' + cid);
+    await escribir('#ef-cantidad','10'); await escribir('#ef-precio','1'); await escribir('#ef-cotizado','1.5');
+    await escribir('#ef-entregas-list [data-cant-split="0"]','100');
+    await escribir('#ef-entregas-list [data-div-split="0"]',D1);
+    await clic('#ef-entregas-list [data-pick-split="0"]'); await clic('#sel-ent-list [data-pick]',350);
+    await clic('#ef-add-entrega',250);
+    await escribir('#ef-entregas-list [data-cant-split="1"]','200');
+    await escribir('#ef-entregas-list [data-div-split="1"]',D2);
+    await clic('#ef-entregas-list [data-pick-split="1"]');
+    await clic(`#sel-ent-list [data-pick="${extra.destId}"]`,350);
+    await escribir('#ef-divisa-ganancia',D1);
+    await clic('#ef-add-ganancia',250);
+    await escribir('#ef-ganancias-extra [data-cant-extra="0"]','3');
+    await escribir('#ef-ganancias-extra [data-div-extra="0"]',extra.divisa);
+    await clic('#ef-ganancias-extra [data-forma-extra="0"] .pill[data-v="Transferencia"]',200);
+    await clic('#ef-descuenta .pill[data-v="0"]');
+    await clic('#ef-revisar',300); await clic('#es-confirmar',450);
+    const envioSplitId=await p.evaluate(()=>DB.envios[DB.envios.length-1].id);
+    const deudasSplit=await p.evaluate(id=>DB.deudas.filter(d=>d.origen==='envio'&&d.origen_id===id&&d.estado==='pendiente').map(d=>({id:d.id,detalle:d.origen_detalle_id,divisa:d.divisa,monto:d.monto})),envioSplitId);
+    check(deudasSplit.length===2 && new Set(deudasSplit.map(x=>x.detalle)).size===2,'se crean dos deudas independientes, cada una vinculada a su entrega');
+    check(await saldo(D1)===splitBase1+5 && await saldo(D2)===splitBase2 && await saldo(extra.divisa)===splitBase3+3,
+      'ganancia principal y ganancia adicional entran en sus respectivas divisas');
+    await ir('#/deudas/pagar_a');
+    const deudaD1=deudasSplit.find(x=>x.divisa===D1), deudaD2=deudasSplit.find(x=>x.divisa===D2);
+    await clic(`#deudas-list .list-item[data-id="${deudaD1.id}"]`,300);
+    await clic('#dd-cerrar',250); await clic('#cd-ok',350); await clic('#wa-no',250);
+    check(await saldo(D1)===splitBase1+5,'pagar split en la misma divisa que la ganancia principal no duplica el descuento');
+    await clic(`#deudas-list .list-item[data-id="${deudaD2.id}"]`,300);
+    await clic('#dd-cerrar',250); await clic('#cd-ok',350); await clic('#wa-no',250);
+    check(await saldo(D2)===splitBase2-200,'pagar el otro split descuenta solo su propia cantidad y divisa');
+    await ir('#/envio-detalle/' + envioSplitId);
+    check((await texto('.card')).includes('Ganancia adicional') && (await texto('.card')).includes('Lia Destino'),
+      'el detalle muestra destinatarios, entregas y ganancias adicionales');
+    await clic('#ed-edit',350);
+    await escribir('#ee-entregas-list [data-cant-split="1"]','210');
+    await clic('#ee-save',250); await clic('#cd-ok',450);
+    const deudaEditada=await p.evaluate(id=>{const d=DB.deudas.find(x=>x.id===id);return d?{monto:d.monto,estado:d.estado}:null;},deudaD2.id);
+    check(deudaEditada && deudaEditada.monto===210 && deudaEditada.estado==='pagado',
+      'editar un split actualiza su deuda sin perder el estado de pago');
+    check(await saldo(D2)===splitBase2-210,
+      'editar una entrega ya pagada revierte el importe anterior y aplica el nuevo exactamente una vez');
+    await ir('#/panel');
 
     seccion('6. Me deben: deudas manuales (tres tipos)');
     await ir('#/deudas/me_deben');

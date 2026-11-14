@@ -1,3 +1,12 @@
+## 2026-11-14 — Entregas divididas y ganancias en varias divisas
+
+- **Entregas por destinatario:** un envío puede registrar varias entregas, cada una con destinatario, cantidad, divisa e identificador propio. Con descuento inmediato, cada split afecta su divisa; con descuento pendiente, se crea una deuda independiente por entrega.
+- **Pagos de entregas:** cada deuda queda vinculada al split correspondiente. Al pagar o eliminar, el ajuste del balance se calcula con la divisa de esa entrega, evitando repetir el descuento cuando ya está representado por la ganancia principal.
+- **Ganancias adicionales:** un envío puede registrar ingresos adicionales por importe, divisa y forma de cobro. Se reflejan en balance general y filtrado, historial de movimientos, Panel, buscador y Excel.
+- **Edición y avisos:** editar un envío sincroniza sus deudas sin perder los pagos existentes; las notificaciones de mensajero se guardan por entrega y se limpian al duplicar un envío.
+- **Importación:** al fusionar respaldos, se traducen los identificadores de cada entrega junto con el ID del envío, para conservar la relación entre las deudas y sus destinatarios.
+- **PWA:** caché actualizada a `remesas-v36`. Se ampliaron las pruebas automáticas para cubrir dos destinatarios, ganancias adicionales y pagos por split. No se compiló APK.
+
 # Historial breve y línea base
 
 ## 2026-11-13 — Pruebas automáticas, mejoras de uso y limpieza

@@ -33,7 +33,7 @@ function adjustBalance(divisaNombre, delta){
 // Estos son los que bloquean el borrado.
 function contarRegistrosActivosDeDivisa(nombre){
   let n = 0;
-  n += DB.envios.filter(e=>!e.archivado && (e.divisa_entrega===nombre || e.divisa_ganancia===nombre)).length;
+  n += DB.envios.filter(e=>!e.archivado && envioTieneDivisa(e,nombre)).length;
   n += DB.ventas.filter(v=>!v.archivado && (v.divisa_vendida===nombre || v.divisa_recibida===nombre)).length;
   n += DB.compras.filter(c=>!c.archivado && (c.divisa_comprada===nombre || c.divisa_pagada===nombre)).length;
   n += DB.gastos.filter(g=>!g.archivado && g.divisa===nombre).length;
@@ -48,7 +48,7 @@ function contarRegistrosActivosDeDivisa(nombre){
 // bloquean el borrado: se eliminan junto con la divisa si el usuario confirma.
 function contarRegistrosArchivadosDeDivisa(nombre){
   let n = 0;
-  n += DB.envios.filter(e=>e.archivado && (e.divisa_entrega===nombre || e.divisa_ganancia===nombre)).length;
+  n += DB.envios.filter(e=>e.archivado && envioTieneDivisa(e,nombre)).length;
   n += DB.ventas.filter(v=>v.archivado && (v.divisa_vendida===nombre || v.divisa_recibida===nombre)).length;
   n += DB.compras.filter(c=>c.archivado && (c.divisa_comprada===nombre || c.divisa_pagada===nombre)).length;
   n += DB.gastos.filter(g=>g.archivado && g.divisa===nombre).length;
@@ -62,7 +62,7 @@ function contarRegistrosArchivadosDeDivisa(nombre){
 // llama a adjustBalance: el saldo de ninguna otra divisa se toca. Un solo
 // save() al final.
 function eliminarDivisaYArchivadosAsociados(nombre){
-  DB.envios = DB.envios.filter(e=>!(e.archivado && (e.divisa_entrega===nombre || e.divisa_ganancia===nombre)));
+  DB.envios = DB.envios.filter(e=>!(e.archivado && envioTieneDivisa(e,nombre)));
   DB.ventas = DB.ventas.filter(v=>!(v.archivado && (v.divisa_vendida===nombre || v.divisa_recibida===nombre)));
   DB.compras = DB.compras.filter(c=>!(c.archivado && (c.divisa_comprada===nombre || c.divisa_pagada===nombre)));
   DB.gastos = DB.gastos.filter(g=>!(g.archivado && g.divisa===nombre));
@@ -83,38 +83,36 @@ function normalizarNombreDivisaParaComparar(nombre){
 function mismasDivisas(a,b){
   return Boolean(a) && Boolean(b) && normalizarNombreDivisaParaComparar(a)===normalizarNombreDivisaParaComparar(b);
 }
+function envioTieneDivisa(e,nombre){
+  return obtenerEntregasEnvio(e).some(x=>x.divisa===nombre)||e?.divisa_ganancia===nombre||
+    obtenerGananciasAdicionalesEnvio(e).some(x=>x.divisa===nombre);
+}
+function entregaEnvioDeDeuda(deuda,envio){
+  const entregas=obtenerEntregasEnvio(envio);
+  if(deuda?.origen_detalle_id!=null)return entregas.find(x=>String(x.id)===String(deuda.origen_detalle_id))||null;
+  return entregas[0]||null;
+}
+function deudaEnvioDescuentaBalance(deuda,envio){
+  if(!envio)return true;
+  const entrega=entregaEnvioDeDeuda(deuda,envio);
+  return entrega ? !mismasDivisas(entrega.divisa,envio.divisa_ganancia) : true;
+}
 function envioGananciaInmediata(e){
   return Number(e?.ganancia||0) !== 0;
 }
 
-function applyEnvioBalance(envio, sign, deuda=null){
-  const entrega = Number(envio.cantidad_pagada||0);
-  const ganancia = Number(envio.ganancia||0);
-  const mismaDivisa = mismasDivisas(envio.divisa_entrega, envio.divisa_ganancia);
-
-  // =====================================================
-  // CASO 1: SWITCH ON (descuento inmediato)
-  // =====================================================
+function applyEnvioBalance(envio,sign,deuda=null,ajustar=adjustBalance){
+  const entregas=obtenerEntregasEnvio(envio);
   if(envioDescuentaAhora(envio)){
-    // Restar la entrega
-    adjustBalance(envio.divisa_entrega, -1 * sign * entrega);
-    // Sumar la ganancia (o el total si misma divisa)
-    if(mismaDivisa){
-      adjustBalance(envio.divisa_ganancia, 1 * sign * (entrega + ganancia));
-    } else {
-      adjustBalance(envio.divisa_ganancia, 1 * sign * ganancia);
-    }
-    return;
+    entregas.forEach(split=>{
+      ajustar(split.divisa,-1*sign*Number(split.cantidad||0));
+      // Si la misma divisa es la de la ganancia principal, se compensa
+      // el descuento porque la ganancia neta ya representa la operación.
+      if(mismasDivisas(split.divisa,envio.divisa_ganancia))ajustar(envio.divisa_ganancia,sign*Number(split.cantidad||0));
+    });
   }
-
-  // =====================================================
-  // CASO 2: SWITCH OFF (va a "Pagar a:")
-  // =====================================================
-  // La ganancia se reconoce por completo AHORA, al registrar el envío.
-  // La entrega queda pendiente en Deudas -> Pagar a, y su pago NO debe
-  // volver a tocar el balance (eso se maneja aparte, en el momento de
-  // marcar la deuda como pagada — ver el bloque "dd-cerrar").
-  adjustBalance(envio.divisa_ganancia, 1 * sign * ganancia);
+  ajustar(envio.divisa_ganancia,sign*Number(envio.ganancia||0));
+  obtenerGananciasAdicionalesEnvio(envio).forEach(g=>ajustar(g.divisa,sign*Number(g.cantidad||0)));
 }
 
 function envioGananciaMostrada(e){

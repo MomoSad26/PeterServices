@@ -268,40 +268,54 @@ function openEnvioEditModal(id,onSaved){
 
   openModal(`
     <div class="modal-title">Editar envío</div>
+    <label class="field-label">Fecha y hora del envío *</label>
+    <input type="datetime-local" id="ee-fecha" value="${toLocalDatetimeValue(e.fecha_hora)}">
+
     <label class="field-label">${entityLabel} *</label>
     <div class="picker" id="ee-entity-picker"><span id="ee-entity-name">${entityTipo==='trabajador'?'👷 ':''}${escapeHtml(entity.nombre)}</span><span>🔍</span></div>
-    <label class="field-label">ENTREGAS (una por destinatario) *</label>
-    ${entregasEnvioHtml('ee',obtenerEntregasEnvio(e))}
-    <div class="hint">Cada entrega tiene su propio destinatario, cantidad y divisa.</div>
+
     <label class="field-label">Cantidad enviada *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ee-cantidad" value="${e.cantidad_enviada}">
+
     <label class="field-label">Moneda *</label>
     <select id="ee-moneda" class="picker">${monedaOptionsHtml(e.moneda)}</select>
+
     <label class="field-label">Precio *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ee-precio" value="${e.precio}">
-    ${e.tipo!=='precio_especial'?`
-      <label class="field-label">Descontar las entregas del balance al guardar</label>
-      <div class="pill-row" id="ee-descuenta">
-        <div class="pill ${!envioDescuentaAhora(e)?'active':''}" data-v="0">No — crear deudas</div>
-        <div class="pill ${envioDescuentaAhora(e)?'active':''}" data-v="1">Sí — descontar ahora</div>
-      </div>
-    `:''}
+
+    <label class="field-label">Cantidad a entregar (TOTAL DE REFERENCIA)</label>
+    <input type="number" inputmode="decimal" step="0.01" id="ee-cantidad-entregar" value="${Number(e.cantidad_enviada)>0&&Number(e.precio)>0?round2(Number(e.cantidad_enviada)*Number(e.precio)):''}" placeholder="Calculado automáticamente">
+    <div class="hint">Referencia visual calculada como Cantidad enviada × Precio. Puede ajustarla; no se suma ni se compara con las entregas.</div>
+
+    <label class="field-label">Destinatarios (splits de entrega) *</label>
+    ${entregasEnvioHtml('ee',obtenerEntregasEnvio(e))}
+    <div class="hint">Cada entrega tiene su propio destinatario, cantidad y divisa.</div>
+
     <label class="field-label">Cotizado a</label>
     <input type="number" inputmode="decimal" step="0.01" id="ee-cotizado" value="${e.cotizado_a!==null&&e.cotizado_a!==undefined?e.cotizado_a:''}" placeholder="Opcional">
+
     <label class="field-label">Ganancia principal *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ee-ganancia" value="${e.ganancia}">
     <label class="field-label">Divisa de ganancia principal *</label>
     <select id="ee-divisa-ganancia" class="picker">${divisaOptionsHtml(e.divisa_ganancia)}</select>
     <label class="field-label">Forma de ganancia principal *</label>
     <div class="pill-row" id="ee-forma">${['Efectivo','Transferencia','USD'].map(f=>`<div class="pill ${e.forma_ganancia===f?'active':''}" data-v="${f}">${f}</div>`).join('')}</div>
+
     <label class="field-label">GANANCIAS ADICIONALES</label>
     ${gananciasAdicionalesEnvioHtml('ee')}
-    <label class="field-label">Fecha y hora del envío *</label>
-    <input type="datetime-local" id="ee-fecha" value="${toLocalDatetimeValue(e.fecha_hora)}">
+
+    ${e.tipo!=='precio_especial'?`
+      <label class="field-label">Descontar divisa pagada del balance general al pagar</label>
+      <div class="pill-row" id="ee-descuenta">
+        <div class="pill ${!envioDescuentaAhora(e)?'active':''}" data-v="0">No</div>
+        <div class="pill ${envioDescuentaAhora(e)?'active':''}" data-v="1">Sí</div>
+      </div>
+    `:''}
+
     <label class="field-label">Nota</label>
     <textarea id="ee-nota" maxlength="500" placeholder="Opcional">${escapeHtml(e.nota||'')}</textarea>
     <div class="modal-actions"><button class="btn btn-outline btn-block" id="ee-cancel">Cancelar</button><button class="btn btn-primary btn-block" id="ee-save">Guardar cambios</button></div>
-  `);
+  `);;
 
   bindAddOnSelect(document.getElementById('ee-moneda'),addMoneda,monedaOptionsHtml);
   bindAddOnSelect(document.getElementById('ee-divisa-ganancia'),addDivisa,divisaOptionsHtml);
@@ -325,17 +339,24 @@ function openEnvioEditModal(id,onSaved){
   const precioEl=document.getElementById('ee-precio');
   const cotizadoEl=document.getElementById('ee-cotizado');
   const gananciaEl=document.getElementById('ee-ganancia');
+  const referenciaEl=document.getElementById('ee-cantidad-entregar');
   const saveBtn=document.getElementById('ee-save');
   const cotInicial=e.cotizado_a;
   const gananciaAutoInicial=(cotInicial===null||cotInicial===undefined)?null:
     round2(Number(e.cantidad_enviada||0)*(Number(cotInicial)-Number(e.precio||0)));
   let gananciaTouched=gananciaAutoInicial===null?true:gananciaAutoInicial!==round2(e.ganancia);
+  let referenciaTouched=false;
+  referenciaEl.addEventListener('input',()=>{referenciaTouched=true;});
   function validarCotizado(){
     const cotRaw=cotizadoEl.value.trim(),cot=cotRaw===''?null:Number(cotRaw);
     const invalid=e.tipo!=='precio_especial'&&cot!==null&&(!Number.isFinite(cot)||cot<Number(precioEl.value));
     cotizadoEl.classList.toggle('err',!!invalid);saveBtn.disabled=!!invalid;saveBtn.style.opacity=invalid?.5:1;
   }
   function recalc(){
+    if(!referenciaTouched){
+      const cantidad=Number(cantidadEl.value||0),precio=Number(precioEl.value||0);
+      referenciaEl.value=(cantidad>0&&precio>0)?round2(cantidad*precio):'';
+    }
     if(e.tipo!=='precio_especial'&&!gananciaTouched){
       const cotRaw=cotizadoEl.value.trim();
       if(cotRaw!=='')gananciaEl.value=round2(Number(cantidadEl.value||0)*(Number(cotRaw)-Number(precioEl.value||0)));

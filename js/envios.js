@@ -16,9 +16,15 @@ function envioFormHtml(opts){
   const val = (v)=> (v===null || v===undefined) ? '' : escapeHtml(String(v));
   const descuenta = p ? (envioDescuentaAhora(p) ? 1 : 0) : 0;
   const forma = p ? (p.forma_ganancia || 'Efectivo') : 'Efectivo';
+  const referenciaInicial = p && Number(p.cantidad_enviada)>0 && Number(p.precio)>0
+    ? round2(Number(p.cantidad_enviada)*Number(p.precio)) : '';
   return `
     <h1 class="section-title">${opts.titulo}</h1>
     ${p ? `<div class="badge badge-gold" style="margin:-4px 0 6px;">📋 Duplicado — revise y guarde como envío nuevo</div>` : ''}
+
+    <label class="field-label">Fecha y hora del envío *</label>
+    <input type="datetime-local" id="ef-fecha" value="${toLocalDatetimeValue(Date.now())}">
+    <div class="hint">Por defecto es la fecha y hora actual. Puede ajustarla.</div>
 
     <label class="field-label">${opts.entityLabel} *</label>
     ${opts.showEntityPicker ? `
@@ -31,9 +37,6 @@ function envioFormHtml(opts){
       <input type="text" value="${escapeHtml(opts.entityName)}" disabled>
     `}
 
-    <label class="field-label">ENTREGAS (una por destinatario) *</label>
-    ${entregasEnvioHtml('ef', p ? obtenerEntregasEnvio(p) : null)}
-
     <label class="field-label">Cantidad enviada *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ef-cantidad" placeholder="0.00" value="${val(p?.cantidad_enviada)}">
 
@@ -43,35 +46,36 @@ function envioFormHtml(opts){
     <label class="field-label">Precio *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ef-precio" placeholder="0.00" value="${val(p?.precio)}">
 
-    <div class="hint">Puede registrar una o varias entregas, cada una con su destinatario, cantidad y divisa.</div>
+    <label class="field-label">Cantidad a entregar (TOTAL DE REFERENCIA)</label>
+    <input type="number" inputmode="decimal" step="0.01" id="ef-cantidad-entregar" placeholder="Calculado automáticamente" value="${val(referenciaInicial)}">
+    <div class="hint">Referencia visual calculada como Cantidad enviada × Precio. Puede ajustarla; no se suma ni se compara con las entregas.</div>
+
+    <label class="field-label">Destinatarios (splits de entrega) *</label>
+    ${entregasEnvioHtml('ef', p ? obtenerEntregasEnvio(p) : null)}
+    <div class="hint">Cada destinatario tiene su propia cantidad y divisa de entrega.</div>
+
+    <label class="field-label">Cotizado a</label>
+    <input type="number" inputmode="decimal" step="0.01" id="ef-cotizado" placeholder="Opcional" value="${val(p?.cotizado_a)}">
+
+    <label class="field-label">Ganancia principal *</label>
+    <input type="number" inputmode="decimal" step="0.01" id="ef-ganancia" placeholder="0.00" value="${val(p?.ganancia)}">
+    <label class="field-label">Divisa de ganancia principal *</label>
+    <select id="ef-divisa-ganancia" class="picker">${divisaOptionsHtml(p ? p.divisa_ganancia : '')}</select>
+    <label class="field-label">Forma de ganancia principal *</label>
+    <div class="pill-row" id="ef-forma">
+      ${['Efectivo','Transferencia','USD'].map(f=>`<div class="pill ${forma===f?'active':''}" data-v="${f}">${f}</div>`).join('')}
+    </div>
+    <div class="hint">Se calcula automáticamente: Cantidad enviada × (Cotizado a − Precio). Puede ajustarla.</div>
+
+    <label class="field-label">GANANCIAS ADICIONALES</label>
+    ${gananciasAdicionalesEnvioHtml('ef', p ? obtenerGananciasAdicionalesEnvio(p) : [])}
 
     <label class="field-label">Descontar divisa pagada del balance general al pagar</label>
     <div class="pill-row" id="ef-descuenta">
       <div class="pill ${descuenta?'':'active'}" data-v="0">No</div>
       <div class="pill ${descuenta?'active':''}" data-v="1">Sí</div>
     </div>
-    <div class="hint">Si está en "No", la divisa de entrega no se descuenta ahora — se crea un registro pendiente en Deudas → Pagar a.</div>
-
-    <label class="field-label">Cotizado a</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-cotizado" placeholder="Opcional" value="${val(p?.cotizado_a)}">
-
-    <label class="field-label">Ganancia *</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-ganancia" placeholder="0.00" value="${val(p?.ganancia)}">
-    <div class="hint">Se calcula automático: Cantidad enviada × (Cotizado a − Precio). Puede ajustarlo.</div>
-
-    <label class="field-label">Divisa de ganancia *</label>
-    <select id="ef-divisa-ganancia" class="picker">${divisaOptionsHtml(p ? p.divisa_ganancia : '')}</select>
-
-    <label class="field-label">Forma de ganancia principal *</label>
-    <div class="pill-row" id="ef-forma">
-      ${['Efectivo','Transferencia','USD'].map(f=>`<div class="pill ${forma===f?'active':''}" data-v="${f}">${f}</div>`).join('')}
-    </div>
-    <label class="field-label">GANANCIAS ADICIONALES</label>
-    ${gananciasAdicionalesEnvioHtml('ef', p ? obtenerGananciasAdicionalesEnvio(p) : [])}
-
-    <label class="field-label">Fecha y hora del envío *</label>
-    <input type="datetime-local" id="ef-fecha" value="${toLocalDatetimeValue(Date.now())}">
-    <div class="hint">Por defecto es la fecha y hora actual. Puede ajustarla.</div>
+    <div class="hint">Si está en "No", cada split crea su propia deuda en Deudas → Pagar a. Si está en "Sí", el descuento se aplica al registrar el envío.</div>
 
     <label class="field-label">Nota</label>
     <textarea id="ef-nota" maxlength="500" placeholder="Opcional">${p ? escapeHtml(p.nota||'') : ''}</textarea>
@@ -189,7 +193,7 @@ function resumenEntregasEnvio(e){
   return `${entregas.length} ${entregas.length===1?'entrega':'entregas'} · ${detalle}`;
 }
 function gananciasAdicionalesEnvioHtml(pref){
-  return `<div id="${pref}-ganancias-extra"></div><button type="button" class="btn btn-outline btn-block" id="${pref}-add-ganancia">+ Agregar otra ganancia</button>`;
+  return `<div id="${pref}-ganancias-extra"></div><button type="button" class="btn btn-outline btn-block" id="${pref}-add-ganancia">+ Agregar otra divisa de ganancia</button>`;
 }
 function wireGananciasAdicionalesEnvio(pref,inicial){
   let items=(Array.isArray(inicial)?inicial:[]).map(x=>({...x}));
@@ -216,6 +220,7 @@ function wireGananciasAdicionalesEnvio(pref,inicial){
 function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onSaved, prefill}){
   const cantEl = document.getElementById('ef-cantidad');
   const precioEl = document.getElementById('ef-precio');
+  const referenciaEl = document.getElementById('ef-cantidad-entregar');
   const cotizadoEl = document.getElementById('ef-cotizado');
   const gananciaEl = document.getElementById('ef-ganancia');
   const divGananciaEl = document.getElementById('ef-divisa-ganancia');
@@ -224,6 +229,7 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
   const getEntregas = wireEntregasEnvio('ef', prefill ? obtenerEntregasEnvio(prefill) : null);
   const getGananciasAdicionales = wireGananciasAdicionalesEnvio('ef', prefill ? obtenerGananciasAdicionalesEnvio(prefill) : []);
   let gananciaTouched = false;
+  let referenciaTouched = false;
   let formaGanancia = 'Efectivo';
   let descuentaAhora = 0;
   if(prefill){
@@ -257,6 +263,9 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
     const cant = parseFloat(cantEl.value)||0;
     const precio = parseFloat(precioEl.value)||0;
     const cotizado = cotizadoEl.value.trim()==='' ? null : parseFloat(cotizadoEl.value);
+    if(!referenciaTouched){
+      referenciaEl.value = (cant>0 && precio>0) ? round2(cant*precio) : '';
+    }
     if(!gananciaTouched){
       gananciaEl.value = (cotizado!==null) ? round2(cant*(cotizado-precio)) : '';
     }
@@ -273,6 +282,7 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
   const revisarBtn = document.getElementById('ef-revisar');
   [cantEl, precioEl, cotizadoEl].forEach(el=>el.addEventListener('input', recalc));
   gananciaEl.addEventListener('input', ()=>{ gananciaTouched = true; });
+  referenciaEl.addEventListener('input', ()=>{ referenciaTouched = true; });
 
   if(entityRequired){
     const pickerEl = document.getElementById('ef-entity-picker');
@@ -305,6 +315,7 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
     const divisa_ganancia = divGananciaEl.value;
     const nota = notaEl.value.trim();
     const fechaVal = document.getElementById('ef-fecha').value;
+    const cantidadEntregaReferencia = referenciaEl.value.trim()==='' ? null : Number(referenciaEl.value);
 
     const entregasValidas = entregas.length>0 && entregas.every(x=>Number.isFinite(x.cantidad)&&x.cantidad>0&&!!x.divisa&&x.divisa!=='__add__');
     const extrasValidas = ganancias_adicionales.every(x=>Number.isFinite(x.cantidad)&&x.cantidad>0&&!!x.divisa&&x.divisa!=='__add__'&&['Efectivo','Transferencia','USD'].includes(x.forma));
@@ -329,29 +340,33 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
       destinatario_id: entregas[0].destinatario_id??null,
       destinatario_nombre: entregas[0].destinatario_nombre||''
     };
-    showEnvioSummary(envio, entity, onSaved);
+    showEnvioSummary(envio, entity, onSaved, cantidadEntregaReferencia);
   };
 
   recalc();
 }
 
-function showEnvioSummary(envio, entity, onSaved){
+function showEnvioSummary(envio, entity, onSaved, cantidadEntregaReferencia){
   const entregas=obtenerEntregasEnvio(envio), extras=obtenerGananciasAdicionalesEnvio(envio);
+  const referencia=cantidadEntregaReferencia===null||cantidadEntregaReferencia===undefined?'—':fmtMoney(cantidadEntregaReferencia);
   openModal(`
     <div class="modal-title">Confirme los datos del envío antes de guardar.</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:10px;">
+      <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(envio.fecha_hora)}</span></div>
       <div class="sumrow"><span class="k">${envio.tipo==='trabajador'?'Trabajador':'Cliente'}</span><span class="v">${escapeHtml(entity.nombre)}</span></div>
-      <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(envio.cantidad_enviada)} ${escapeHtml(envio.moneda)}</span></div>
+      <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(envio.cantidad_enviada)}</span></div>
+      <div class="sumrow"><span class="k">Moneda</span><span class="v">${escapeHtml(envio.moneda)}</span></div>
       <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(envio.precio)}</span></div>
-      <div style="font-weight:800;margin:10px 0 4px;">Entregas</div>
+      <div class="sumrow"><span class="k">Cantidad a entregar (referencia)</span><span class="v">${referencia}</span></div>
+      <div style="font-weight:800;margin:10px 0 4px;">Destinatarios</div>
       ${entregas.map((x,i)=>`<div class="sumrow"><span class="k">${i+1}. ${escapeHtml(x.destinatario_nombre||entity.nombre)}</span><span class="v">${fmtMoney(x.cantidad)} ${escapeDivisa(x.divisa)}</span></div>`).join('')}
-      <div class="sumrow"><span class="k">Descontar ahora</span><span class="v">${envio.descuenta_ahora?'Sí':'No — '+entregas.length+' deudas pendientes'}</span></div>
       <div class="sumrow"><span class="k">Cotizado a</span><span class="v">${envio.cotizado_a!==null?fmtMoney(envio.cotizado_a):'—'}</span></div>
       <div style="font-weight:800;margin:10px 0 4px;">Ganancia principal</div>
       <div class="sumrow"><span class="k">Monto</span><span class="v">${fmtMoney(envio.ganancia)} ${escapeDivisa(envio.divisa_ganancia)}</span></div>
       <div class="sumrow"><span class="k">Forma</span><span class="v">${escapeHtml(envio.forma_ganancia)}</span></div>
       ${extras.length?`<div style="font-weight:800;margin:10px 0 4px;">Ganancias adicionales</div>${extras.map((g,i)=>`<div class="sumrow"><span class="k">${i+1}. ${escapeHtml(g.forma)}</span><span class="v">${fmtMoney(g.cantidad)} ${escapeDivisa(g.divisa)}</span></div>`).join('')}`:''}
-      <div class="sumrow"><span class="k">Fecha y hora</span><span class="v">${fmtDate(envio.fecha_hora)}</span></div>
+      <div class="sumrow"><span class="k">Descontar al pagar</span><span class="v">${envio.descuenta_ahora?'Sí':'No — '+entregas.length+' deudas pendientes'}</span></div>
+      <div class="sumrow"><span class="k">Nota</span><span class="v">${escapeHtml(envio.nota||'Sin nota')}</span></div>
     </div>
     <div class="modal-actions"><button class="btn btn-outline btn-block" id="es-volver">Volver a editar</button><button class="btn btn-primary btn-block" id="es-confirmar">Confirmar y guardar</button></div>
   `);

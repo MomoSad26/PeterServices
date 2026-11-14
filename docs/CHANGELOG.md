@@ -1,3 +1,10 @@
+## 2026-11-14 — Reorganización del formulario de envío
+
+- Se reordenaron los campos de alta y edición: fecha/hora, cliente o trabajador, importe enviado, moneda, precio, referencia de entrega, destinatarios, cotización, ganancias y descuento al pagar.
+- Se incorporó «Cantidad a entregar» como total de referencia calculado por cantidad enviada × precio, ajustable manualmente y sin divisa. No se suma, valida ni compara con los splits y no se guarda como dato contable.
+- El resumen previo al guardado muestra el nuevo orden, todos los destinatarios y las ganancias adicionales. Se actualizó el texto del botón para agregar otra divisa de ganancia.
+- Se mantienen las validaciones, fórmulas de ganancia, creación de deudas, switch de descuento y lógica de balance. Caché PWA remesas-v37. No se compiló APK.
+
 ## 2026-11-14 — Entregas divididas y ganancias en varias divisas
 
 - **Entregas por destinatario:** un envío puede registrar varias entregas, cada una con destinatario, cantidad, divisa e identificador propio. Con descuento inmediato, cada split afecta su divisa; con descuento pendiente, se crea una deuda independiente por entrega.

@@ -1,3 +1,10 @@
+## 2026-11-14 — Deudas manuales editables y entrega global en envíos
+
+- **Deudas manuales:** el detalle permite editar únicamente registros con `origen === null` y estado `pendiente`, tanto en «Me deben» como en «Pagar a». Los registros manuales agrupados por comprador se pueden editar individualmente. Al cambiar un préstamo pendiente se revierte el descuento anterior y se aplica el nuevo importe una sola vez; los cálculos de cobro/pago siguen intactos.
+- **WhatsApp al mensajero:** cada deuda nueva de envío conserva `origen_detalle_id`, por lo que el detalle resuelve el split y el destinatario correspondientes. Las deudas anteriores sin ese identificador intentan resolverse por destinatario, monto y divisa; la edición del envío también conserva su estado de pago.
+- **Entrega global:** se añadieron `cantidad_entrega_global` y `divisa_entrega_global`. Sin splits, esos campos representan la entrega efectiva para balance y «Pagar a»; con splits, solo los splits cuentan como entregas reales y los campos globales sirven de plantilla para nuevos destinatarios. Los splits nuevos copian los valores globales vigentes y no se modifican al editar después esos valores.
+- **Edición de envíos:** conserva la distinción entre entrega global y splits y sincroniza las deudas existentes, incluidos los pagos previos. Se mantienen las fórmulas de conversión y ganancias. Caché PWA actualizada a `remesas-v38`. No se compiló ni publicó APK.
+
 ## 2026-11-14 — Reorganización del formulario de envío
 
 - Se reordenaron los campos de alta y edición: fecha/hora, cliente o trabajador, importe enviado, moneda, precio, referencia de entrega, destinatarios, cotización, ganancias y descuento al pagar.

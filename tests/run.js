@@ -144,8 +144,10 @@ function pruebasEstaticas(){
 
     async function nuevoEnvio({descuenta, destinatario}){
       await ir('#/envio/cliente/' + cid);
-      if(destinatario){ await clic('#ef-entregas-list [data-pick-split="0"]'); await clic('#sel-ent-list [data-pick]', 350); }
       await escribir('#ef-cantidad', '100'); await escribir('#ef-precio', '82'); await escribir('#ef-ganancia', '5');
+      await escribir('#ef-divisa-entrega', D1);
+      await clic('#ef-add-entrega', 250);
+      if(destinatario){ await clic('#ef-entregas-list [data-pick-split="0"]'); await clic('#sel-ent-list [data-pick]', 350); }
       await escribir('#ef-entregas-list [data-cant-split="0"]', '8200');
       await escribir('#ef-entregas-list [data-div-split="0"]', D1);
       await escribir('#ef-divisa-ganancia', D2);
@@ -173,6 +175,7 @@ function pruebasEstaticas(){
     check(!!idDeuda, 'se creó la deuda en Pagar a');
     await ir('#/deudas/pagar_a');
     await clic(`#deudas-list .list-item[data-id="${idDeuda}"]`, 350);
+    check(!(await visible('#dd-edit')), 'una deuda automática de envío no ofrece Editar');
     await clic('#dd-mensajero-btn', 300);
     await clic('#sel-ent-list [data-pick]', 400);
     check((await ultimoEnlace()).startsWith('https://wa.me/5351112222?text='), 'abre WhatsApp del mensajero');
@@ -197,17 +200,25 @@ function pruebasEstaticas(){
     const ordenNuevo = await p.evaluate(selectores=>{
       const els=selectores.map(sel=>document.querySelector(sel));
       return els.every((el,i)=>!!el&&(!i||(els[i-1].compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)));
-    },['#ef-fecha','#ef-entity-picker','#ef-cantidad','#ef-moneda','#ef-precio','#ef-cantidad-entregar','#ef-entregas-list','#ef-cotizado','#ef-ganancia','#ef-divisa-ganancia','#ef-forma','#ef-ganancias-extra','#ef-descuenta','#ef-nota','#ef-revisar']);
+    },['#ef-fecha','#ef-entity-picker','#ef-cantidad','#ef-moneda','#ef-precio','#ef-cantidad-entregar','#ef-divisa-entrega','#ef-entregas-list','#ef-cotizado','#ef-ganancia','#ef-divisa-ganancia','#ef-forma','#ef-ganancias-extra','#ef-descuenta','#ef-nota','#ef-revisar']);
     check(ordenNuevo,'el formulario nuevo respeta el orden solicitado de fecha a botón guardar');
     await escribir('#ef-cantidad','10'); await escribir('#ef-precio','1'); await escribir('#ef-cotizado','1.5');
     check(await p.locator('#ef-cantidad-entregar').inputValue()==='10','la cantidad de referencia se calcula como cantidad enviada por precio');
     await escribir('#ef-cantidad-entregar','15');
     await escribir('#ef-cantidad','20'); await escribir('#ef-cantidad','10');
-    check(await p.locator('#ef-cantidad-entregar').inputValue()==='15','la referencia conserva el ajuste manual y no modifica las entregas');
+    check(await p.locator('#ef-cantidad-entregar').inputValue()==='15','la cantidad global conserva el ajuste manual aunque cambie la cantidad enviada');
+    await escribir('#ef-divisa-entrega',D1);
+    await clic('#ef-add-entrega',250);
+    check(await p.locator('#ef-entregas-list [data-cant-split="0"]').inputValue()==='15' &&
+      await p.locator('#ef-entregas-list [data-div-split="0"]').inputValue()===D1,
+      'el primer split copia la cantidad y divisa globales actuales');
     await escribir('#ef-entregas-list [data-cant-split="0"]','100');
     await escribir('#ef-entregas-list [data-div-split="0"]',D1);
     await clic('#ef-entregas-list [data-pick-split="0"]'); await clic('#sel-ent-list [data-pick]',350);
     await clic('#ef-add-entrega',250);
+    check(await p.locator('#ef-entregas-list [data-cant-split="1"]').inputValue()==='15' &&
+      await p.locator('#ef-entregas-list [data-div-split="1"]').inputValue()===D1,
+      'el segundo split copia los valores globales, no los del primer split editado');
     await escribir('#ef-entregas-list [data-cant-split="1"]','200');
     await escribir('#ef-entregas-list [data-div-split="1"]',D2);
     await clic('#ef-entregas-list [data-pick-split="1"]');
@@ -222,10 +233,10 @@ function pruebasEstaticas(){
     const clavesResumen=await p.locator('.modal-backdrop .card .sumrow .k').allTextContents();
     const resumenVisual=await p.locator('.modal-backdrop .card').innerText();
     check(clavesResumen[0]==='Fecha y hora' && clavesResumen[1]==='Cliente' && clavesResumen[2]==='Cantidad enviada' &&
-      clavesResumen[3]==='Moneda' && clavesResumen[4]==='Precio' && clavesResumen[5]==='Cantidad a entregar (referencia)',
-      'el resumen mantiene la secuencia inicial del formulario');
-    check(resumenVisual.includes('Cantidad a entregar (referencia)')&&resumenVisual.includes('15'),
-      'el resumen muestra la referencia manual sin divisa');
+      clavesResumen[3]==='Moneda' && clavesResumen[4]==='Precio' && clavesResumen[5]==='Cantidad a entregar (plantilla)',
+      'el resumen distingue la cantidad global como plantilla cuando hay splits');
+    check(resumenVisual.includes('Cantidad a entregar (plantilla)')&&resumenVisual.includes('15'),
+      'el resumen muestra la cantidad global y su divisa como plantilla');
     await clic('#es-confirmar',450);
     const envioSplitId=await p.evaluate(()=>DB.envios[DB.envios.length-1].id);
     const deudasSplit=await p.evaluate(id=>DB.deudas.filter(d=>d.origen==='envio'&&d.origen_id===id&&d.estado==='pendiente').map(d=>({id:d.id,detalle:d.origen_detalle_id,divisa:d.divisa,monto:d.monto})),envioSplitId);
@@ -234,10 +245,23 @@ function pruebasEstaticas(){
       'ganancia principal y ganancia adicional entran en sus respectivas divisas');
     await ir('#/deudas/pagar_a');
     const deudaD1=deudasSplit.find(x=>x.divisa===D1), deudaD2=deudasSplit.find(x=>x.divisa===D2);
+    // Simula una deuda histórica que se creó antes de persistir origen_detalle_id.
+    await p.evaluate(({envioId,deudaId})=>{
+      const d=DB.deudas.find(x=>x.id===deudaId&&x.origen_id===envioId);
+      if(d)delete d.origen_detalle_id;
+      save();
+    },{envioId:envioSplitId,deudaId:deudaD2.id});
     await clic(`#deudas-list .list-item[data-id="${deudaD1.id}"]`,300);
+    check(!(await visible('#dd-edit')), 'las deudas de los splits siguen siendo automáticas y no editables');
+    await clic('#dd-mensajero-btn',250); await clic('#sel-ent-list [data-pick]',350);
+    check(mensajeDe(await ultimoEnlace())===`👤 Damicela Prueba\n📱 +53 5 2135359\n🧭 Calle 12 #53\n💰 100 ${D1}`,
+      'el primer split genera un mensaje para su propio destinatario');
     await clic('#dd-cerrar',250); await clic('#cd-ok',350); await clic('#wa-no',250);
     check(await saldo(D1)===splitBase1+5,'pagar split en la misma divisa que la ganancia principal no duplica el descuento');
     await clic(`#deudas-list .list-item[data-id="${deudaD2.id}"]`,300);
+    await clic('#dd-mensajero-btn',250); await clic('#sel-ent-list [data-pick]',350);
+    check(mensajeDe(await ultimoEnlace())===`👤 Lia Destino Prueba\n📱 +53 50000000\n🧭 Calle B\n💰 200 ${D2}`,
+      'el segundo split genera un mensaje independiente con los datos del segundo destinatario');
     await clic('#dd-cerrar',250); await clic('#cd-ok',350); await clic('#wa-no',250);
     check(await saldo(D2)===splitBase2-200,'pagar el otro split descuenta solo su propia cantidad y divisa');
     await ir('#/envio-detalle/' + envioSplitId);
@@ -247,9 +271,9 @@ function pruebasEstaticas(){
     const ordenEdicion = await p.evaluate(selectores=>{
       const els=selectores.map(sel=>document.querySelector(sel));
       return els.every((el,i)=>!!el&&(!i||(els[i-1].compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)));
-    },['#ee-fecha','#ee-entity-picker','#ee-cantidad','#ee-moneda','#ee-precio','#ee-cantidad-entregar','#ee-entregas-list','#ee-cotizado','#ee-ganancia','#ee-divisa-ganancia','#ee-forma','#ee-ganancias-extra','#ee-descuenta','#ee-nota','#ee-save']);
-    check(ordenEdicion,'el formulario de edición respeta el mismo orden que el nuevo');
-    check(await p.locator('#ee-cantidad-entregar').inputValue()==='10','la edición muestra el total de referencia calculado');
+    },['#ee-fecha','#ee-entity-picker','#ee-cantidad','#ee-moneda','#ee-precio','#ee-cantidad-entregar','#ee-divisa-entrega','#ee-entregas-list','#ee-cotizado','#ee-ganancia','#ee-divisa-ganancia','#ee-forma','#ee-ganancias-extra','#ee-descuenta','#ee-nota','#ee-save']);
+    check(ordenEdicion,'el formulario de edición respeta el nuevo orden con divisa global');
+    check(await p.locator('#ee-cantidad-entregar').inputValue()==='15','la edición conserva la cantidad global usada como plantilla');
     await escribir('#ee-entregas-list [data-cant-split="1"]','210');
     await clic('#ee-save',250); await clic('#cd-ok',450);
     const deudaEditada=await p.evaluate(id=>{const d=DB.deudas.find(x=>x.id===id);return d?{monto:d.monto,estado:d.estado}:null;},deudaD2.id);
@@ -258,6 +282,62 @@ function pruebasEstaticas(){
     check(await saldo(D2)===splitBase2-210,
       'editar una entrega ya pagada revierte el importe anterior y aplica el nuevo exactamente una vez');
     await ir('#/panel');
+
+    seccion('5c. Envío sin destinatarios: entrega global');
+    const globalBase1=await saldo(D1), globalBase2=await saldo(D2);
+    await ir('#/envio/cliente/' + cid);
+    await escribir('#ef-cantidad','12'); await escribir('#ef-precio','2');
+    await escribir('#ef-ganancia','3'); await escribir('#ef-divisa-entrega',D1);
+    await escribir('#ef-divisa-ganancia',D2);
+    await clic('#ef-descuenta .pill[data-v="0"]');
+    check(await p.locator('#ef-entregas-list .card').count()===0,'el formulario permite mantener cero destinatarios');
+    await clic('#ef-revisar',300);
+    check((await p.locator('.modal-backdrop .card').innerText()).includes('Entrega') &&
+      (await p.locator('.modal-backdrop .card').innerText()).includes(`24 ${D1}`),
+      'el resumen muestra la entrega global cuando no hay splits');
+    await clic('#es-confirmar',450);
+    const globalEnvio=await p.evaluate(()=>DB.envios[DB.envios.length-1]);
+    const deudaGlobal=await p.evaluate(id=>DB.deudas.find(d=>d.origen==='envio'&&d.origen_id===id),globalEnvio.id);
+    check(globalEnvio.entregas.length===0 && globalEnvio.cantidad_entrega_global===24 && globalEnvio.divisa_entrega_global===D1,
+      'el envío guarda cantidad y divisa globales sin crear splits');
+    check(deudaGlobal && deudaGlobal.monto===24 && deudaGlobal.divisa===D1 && deudaGlobal.origen_detalle_id==null,
+      'sin splits se crea una única deuda con la entrega global');
+    check(await saldo(D1)===globalBase1 && await saldo(D2)===globalBase2+3,
+      'sin splits el balance no descuenta entrega pendiente y registra la ganancia habitual');
+    await ir('#/deudas/pagar_a');
+    await clic(`#deudas-list .list-item[data-id="${deudaGlobal.id}"]`,300);
+    check(!(await visible('#dd-edit')),'la deuda automática global tampoco ofrece Editar');
+    await clic('#dd-cerrar',250); await clic('#cd-ok',350);
+    check(await saldo(D1)===globalBase1-24,'al pagar la deuda global se descuenta su importe de la divisa de entrega');
+    if(await visible('#wa-no'))await clic('#wa-no',250);
+    await ir('#/envio-detalle/' + globalEnvio.id); await clic('#ed-edit',300);
+    check(await p.locator('#ee-entregas-list .card').count()===0,'la edición mantiene el modo global sin destinatarios');
+    check(await p.locator('#ee-cantidad-entregar').inputValue()==='24' &&
+      await p.locator('#ee-divisa-entrega').inputValue()===D1,
+      'la edición precarga cantidad y divisa globales');
+    await escribir('#ee-cantidad-entregar','30');
+    await clic('#ee-save',250); await clic('#cd-ok',450);
+    const globalDeudaEditada=await p.evaluate(id=>DB.deudas.find(d=>d.origen==='envio'&&d.origen_id===id),globalEnvio.id);
+    check(globalDeudaEditada?.monto===30 && globalDeudaEditada?.estado==='pagado',
+      'editar la entrega global actualiza la deuda sin perder su estado pagado');
+    check(await saldo(D1)===globalBase1-30 && await saldo(D2)===globalBase2+3,
+      'editar una entrega global ya pagada revierte el importe anterior y aplica el nuevo una sola vez');
+
+    seccion('5d. Envío global con descuento inmediato');
+    const inmediatoBase1=await saldo(D1), inmediatoBase2=await saldo(D2);
+    await ir('#/envio/cliente/' + cid);
+    await escribir('#ef-cantidad','5'); await escribir('#ef-precio','3');
+    await escribir('#ef-ganancia','2'); await escribir('#ef-divisa-entrega',D1);
+    await escribir('#ef-divisa-ganancia',D2);
+    await clic('#ef-descuenta .pill[data-v="1"]');
+    await clic('#ef-revisar',300); await clic('#es-confirmar',450);
+    const envioGlobalInmediato=await p.evaluate(()=>DB.envios[DB.envios.length-1]);
+    check(envioGlobalInmediato.entregas.length===0 &&
+      !(await p.evaluate(id=>DB.deudas.some(d=>d.origen==='envio'&&d.origen_id===id),envioGlobalInmediato.id)),
+      'el envío global con descuento inmediato no crea splits ni deudas');
+    check(await saldo(D1)===inmediatoBase1-15 && await saldo(D2)===inmediatoBase2+2,
+      'el descuento inmediato usa la cantidad y divisa globales sin cambiar la fórmula de ganancia');
+    if(await visible('#wa-no'))await clic('#wa-no',250);
 
     seccion('6. Me deben: deudas manuales (tres tipos)');
     await ir('#/deudas/me_deben');
@@ -272,9 +352,14 @@ function pruebasEstaticas(){
     check(await saldo(D1)===s0-50, 'el Préstamo resta al crearse; los otros dos no');
     for(const persona of ['Ana Uno','Beto Dos','Ceci Tres']){
       await clicFila('#deudas-list', persona);
-      check((await texto('.modal-title')).includes(persona) && await visible('#dd-cerrar') && await visible('#dd-del'), `${persona}: abre su detalle con Cobrar y Eliminar`);
+      check((await texto('.modal-title')).includes(persona) && await visible('#dd-cerrar') && await visible('#dd-del') && await visible('#dd-edit'), `${persona}: abre el detalle con Cobrar, Eliminar y Editar`);
       await p.evaluate(()=>closeModal()); await espera(350);
     }
+    await clicFila('#deudas-list','Beto Dos'); await clic('#dd-edit',250);
+    await escribir('#de-monto','60'); await clic('#de-save',350);
+    check(await p.evaluate(()=>DB.deudas.some(d=>d.persona==='Beto Dos'&&d.monto===60)) && await saldo(D1)===s0-60,
+      'editar un Préstamo pendiente revierte el monto anterior y aplica el nuevo una sola vez');
+    await p.evaluate(()=>closeModal()); await espera(350);
     for(const persona of ['Beto Dos','Ceci Tres']){ await clicFila('#deudas-list', persona); await clic('#dd-cerrar', 300); await clic('#cd-ok', 450); }
     check(await saldo(D1)===s0+50, 'cobrar: Préstamo devuelve 50 y Sumar al cobrar suma 50');
     await clicFila('#deudas-list', 'Ana Uno'); await clic('#dd-del', 300); await clic('#cd-ok', 450);
@@ -283,7 +368,38 @@ function pruebasEstaticas(){
     check(await p.evaluate(()=>DB.deudas.some(d=>d.persona==='Ana Uno')), 'Deshacer la restaura');
     await clic('#deudas-tabs .tab[data-v="historial"]', 350);
     await clicFila('#deudas-list', 'Beto Dos');
-    check((await texto('.modal-title')).includes('Beto Dos'), 'las cobradas abren su detalle desde Historial');
+    check((await texto('.modal-title')).includes('Beto Dos') && !(await visible('#dd-edit')), 'las cobradas abren su detalle desde Historial sin ofrecer Editar');
+    await p.evaluate(()=>closeModal()); await espera(350);
+
+    seccion('6b. Deuda manual agrupada con comprador');
+    const grupoDeudaId=await p.evaluate(divisa=>{
+      const c={id:nextId('compradores'),nombre:'Grupo Manual Prueba',nombre_completo:'',telefono:'',direccion:'',activo:1};
+      DB.compradores.push(c);
+      const d={id:nextId('deudas'),tipo:'me_deben',persona:c.nombre,monto:25,divisa,fecha:Date.now(),creado_en:Date.now(),
+        afecta_balance:0,estado:'pendiente',fecha_cierre:null,nota:'',origen:null,origen_id:null,tipo_me_deben:0,
+        comprador_id:c.id,comprador_nombre:c.nombre,comprador_nombre_completo:'',comprador_telefono:'',comprador_direccion:''};
+      DB.deudas.push(d);save();return d.id;
+    },D1);
+    await ir('#/deudas/me_deben'); await clicFila('#deudas-list','Grupo Manual Prueba');
+    check(await visible('[data-edit-deuda]'),'el detalle de un grupo ofrece editar los registros manuales pendientes');
+    await clic(`[data-edit-deuda="${grupoDeudaId}"]`,250);
+    await escribir('#de-monto','30'); await clic('#de-save',350);
+    check(await p.evaluate(id=>DB.deudas.find(d=>d.id===id)?.monto,grupoDeudaId)===30,
+      'la edición desde un grupo actualiza únicamente su registro manual');
+    await p.evaluate(()=>closeModal()); await espera(350);
+
+    seccion('6c. Deuda manual pendiente en «Pagar a»');
+    await ir('#/deudas/pagar_a'); await clic('#fab-add-deuda');
+    await escribir('#df-persona','Deuda Manual Pagar'); await escribir('#df-monto','35');
+    await p.evaluate(d=>{document.getElementById('df-divisa').value=d;},D1);
+    await clic('#df-save',350);
+    await clicFila('#deudas-list','Deuda Manual Pagar');
+    check(await visible('#dd-edit'),'«Pagar a» muestra Editar en deuda manual pendiente');
+    await clic('#dd-edit',250); await escribir('#de-monto','40');
+    await clic('#de-afecta .pill[data-v="1"]'); await clic('#de-save',350);
+    const deudaPagarEditada=await p.evaluate(()=>DB.deudas.find(d=>d.persona==='Deuda Manual Pagar'));
+    check(deudaPagarEditada?.monto===40 && deudaPagarEditada?.afecta_balance===1,
+      'editar «Pagar a» permite modificar monto y descuento al pagar');
     await p.evaluate(()=>closeModal()); await espera(350);
 
     seccion('7. Gastos: balance, eliminar y Deshacer');

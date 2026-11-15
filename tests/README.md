@@ -23,10 +23,13 @@ En GitHub: Actions → **Pruebas** → *Run workflow*. Es solo manual
 
 - Coherencia de archivos: cada script de `index.html` está en `sw.js` y existe.
 - Todas las rutas del menú abren sin errores de JavaScript; Ajustes es el último menú.
-- Envíos: balance con «Descontar ahora» Sí/No, deuda en «Pagar a», destinatario,
-  mensaje al mensajero y aviso por WhatsApp al entregar.
-- Deudas: las manuales de «Me deben» (tres tipos) abren su detalle; cobrar,
-  eliminar y Deshacer ajustan el balance.
+- Envíos: entrega global sin destinatarios, uno o varios splits, clonación de
+  valores globales, balances y deudas, edición con pagos previos y mensajes
+  de WhatsApp independientes por destinatario, incluso para deudas antiguas
+  que no guardaban el identificador del split.
+- Deudas: edición restringida a registros manuales pendientes en «Me deben» y
+  «Pagar a», incluidos los agrupados por comprador; las automáticas y cerradas
+  no ofrecen Editar. También se comprueban cobro, eliminación y Deshacer.
 - Gastos y Ventas: efecto en el balance, eliminar y Deshacer.
 - Respaldos: exportar cifrado e importar en otra instalación.
 - Panel (recordatorio de deudas viejas), aviso de código de país y

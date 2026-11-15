@@ -18,6 +18,11 @@ function envioFormHtml(opts){
   const forma = p ? (p.forma_ganancia || 'Efectivo') : 'Efectivo';
   const referenciaInicial = p && Number(p.cantidad_enviada)>0 && Number(p.precio)>0
     ? round2(Number(p.cantidad_enviada)*Number(p.precio)) : '';
+  const cantidadEntregaInicial = p && Object.prototype.hasOwnProperty.call(p,'cantidad_entrega_global')
+    ? p.cantidad_entrega_global
+    : (referenciaInicial!=='' ? referenciaInicial : (p?.cantidad_pagada ?? ''));
+  const divisaEntregaInicial = p && Object.prototype.hasOwnProperty.call(p,'divisa_entrega_global')
+    ? p.divisa_entrega_global : (p?.divisa_entrega ?? '');
   return `
     <h1 class="section-title">${opts.titulo}</h1>
     ${p ? `<div class="badge badge-gold" style="margin:-4px 0 6px;">📋 Duplicado — revise y guarde como envío nuevo</div>` : ''}
@@ -46,13 +51,16 @@ function envioFormHtml(opts){
     <label class="field-label">Precio *</label>
     <input type="number" inputmode="decimal" step="0.01" id="ef-precio" placeholder="0.00" value="${val(p?.precio)}">
 
-    <label class="field-label">Cantidad a entregar (TOTAL DE REFERENCIA)</label>
-    <input type="number" inputmode="decimal" step="0.01" id="ef-cantidad-entregar" placeholder="Calculado automáticamente" value="${val(referenciaInicial)}">
-    <div class="hint">Referencia visual calculada como Cantidad enviada × Precio. Puede ajustarla; no se suma ni se compara con las entregas.</div>
+    <label class="field-label">Cantidad a entregar *</label>
+    <input type="number" inputmode="decimal" step="0.01" id="ef-cantidad-entregar" placeholder="Calculado automáticamente" value="${val(cantidadEntregaInicial)}">
+    <div class="hint">Se calcula como Cantidad enviada × Precio. Si no agrega destinatarios, este será el importe de entrega.</div>
 
-    <label class="field-label">Destinatarios (splits de entrega) *</label>
-    ${entregasEnvioHtml('ef', p ? obtenerEntregasEnvio(p) : null)}
-    <div class="hint">Cada destinatario tiene su propia cantidad y divisa de entrega.</div>
+    <label class="field-label">Divisa de entrega *</label>
+    <select id="ef-divisa-entrega" class="picker">${divisaOptionsHtml(divisaEntregaInicial)}</select>
+
+    <label class="field-label">Destinatarios (splits de entrega, opcionales)</label>
+    ${entregasEnvioHtml('ef', p ? obtenerSplitsEnvio(p) : [])}
+    <div class="hint">Puede guardar sin destinatarios. Al agregar uno, se copian la cantidad y la divisa globales actuales; después cada split conserva sus propios valores.</div>
 
     <label class="field-label">Cotizado a</label>
     <input type="number" inputmode="decimal" step="0.01" id="ef-cotizado" placeholder="Opcional" value="${val(p?.cotizado_a)}">
@@ -75,7 +83,7 @@ function envioFormHtml(opts){
       <div class="pill ${descuenta?'':'active'}" data-v="0">No</div>
       <div class="pill ${descuenta?'active':''}" data-v="1">Sí</div>
     </div>
-    <div class="hint">Si está en "No", cada split crea su propia deuda en Deudas → Pagar a. Si está en "Sí", el descuento se aplica al registrar el envío.</div>
+    <div class="hint">Si está en "No", cada split o la entrega global (cuando no hay destinatarios) crea su deuda en Deudas → Pagar a. Si está en "Sí", el descuento se aplica al registrar el envío.</div>
 
     <label class="field-label">Nota</label>
     <textarea id="ef-nota" maxlength="500" placeholder="Opcional">${p ? escapeHtml(p.nota||'') : ''}</textarea>
@@ -125,9 +133,9 @@ function nuevoIdEntregaEnvio(){
   secuenciaIdSplitEnvio++;
   return 'ent-' + Date.now().toString(36) + '-' + secuenciaIdSplitEnvio.toString(36) + '-' + Math.random().toString(36).slice(2,8);
 }
-function obtenerEntregasEnvio(e){
-  if(Array.isArray(e?.entregas) && e.entregas.length) return e.entregas.map((x,i)=>({
-    id:String(x?.id || `${e.id||'envio'}-${i+1}`),
+function normalizarEntregaEnvio(e,x,i){
+  return {
+    id:String(x?.id || `${e?.id||'envio'}-${i+1}`),
     destinatario_id:x?.destinatario_id??null,
     destinatario_nombre:String(x?.destinatario_nombre||''),
     cantidad:Number(x?.cantidad??0),
@@ -135,12 +143,40 @@ function obtenerEntregasEnvio(e){
     mensajero_notificado_id:x?.mensajero_notificado_id??null,
     mensajero_notificado_nombre:String(x?.mensajero_notificado_nombre||''),
     mensajero_notificado_fecha:x?.mensajero_notificado_fecha??null
-  }));
-  return [{id:String(e?.id?`${e.id}-1`:'legacy-1'),destinatario_id:e?.destinatario_id??null,
-    destinatario_nombre:String(e?.destinatario_nombre||''),cantidad:Number(e?.cantidad_pagada||0),divisa:String(e?.divisa_entrega||''),
+  };
+}
+// Los registros antiguos sin un array de entregas conservan su entrega única.
+// En los nuevos registros, un array vacío significa que se usa la entrega global.
+function obtenerSplitsEnvio(e){
+  if(Array.isArray(e?.entregas)) return e.entregas.map((x,i)=>normalizarEntregaEnvio(e,x,i));
+  if(e && (Number(e.cantidad_pagada||0)>0 || e.divisa_entrega || e.destinatario_id!=null || e.destinatario_nombre)){
+    return [normalizarEntregaEnvio(e,{
+      id:e.id?`${e.id}-1`:'legacy-1',
+      destinatario_id:e.destinatario_id??null,
+      destinatario_nombre:e.destinatario_nombre||'',
+      cantidad:e.cantidad_pagada||0,
+      divisa:e.divisa_entrega||'',
+      mensajero_notificado_id:e.mensajero_notificado_id??null,
+      mensajero_notificado_nombre:e.mensajero_notificado_nombre||'',
+      mensajero_notificado_fecha:e.mensajero_notificado_fecha??null
+    },0)];
+  }
+  return [];
+}
+// Entregas efectivas para balance, deudas e historial: splits si existen;
+// de lo contrario, se usa el importe y la divisa globales.
+function obtenerEntregasEnvio(e){
+  const splits=obtenerSplitsEnvio(e);
+  if(splits.length) return splits;
+  return [{
+    id:String(e?.id?`${e.id}-global`:'envio-global'),
+    destinatario_id:null,destinatario_nombre:'',
+    cantidad:Number(e?.cantidad_entrega_global??e?.cantidad_pagada??0),
+    divisa:String(e?.divisa_entrega_global??e?.divisa_entrega??''),
     mensajero_notificado_id:e?.mensajero_notificado_id??null,
     mensajero_notificado_nombre:String(e?.mensajero_notificado_nombre||''),
-    mensajero_notificado_fecha:e?.mensajero_notificado_fecha??null}];
+    mensajero_notificado_fecha:e?.mensajero_notificado_fecha??null
+  }];
 }
 function obtenerGananciasAdicionalesEnvio(e){
   return Array.isArray(e?.ganancias_adicionales)?e.ganancias_adicionales.map(x=>({
@@ -156,12 +192,11 @@ function entregasEnvioHtml(pref,inicial){
 }
 function wireEntregasEnvio(pref,inicial){
   let splits=(Array.isArray(inicial)?inicial:[]).map(x=>({...x,id:x.id||nuevoIdEntregaEnvio()}));
-  if(!splits.length)splits=[{id:nuevoIdEntregaEnvio(),destinatario_id:null,destinatario_nombre:'',cantidad:'',divisa:''}];
   const list=document.getElementById(`${pref}-entregas-list`);
   function render(){
     list.innerHTML=splits.map((x,i)=>`<div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:10px;margin:8px 0;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><strong style="font-size:13px;">Destinatario ${i+1}</strong>
-      <button type="button" class="btn btn-ghost btn-sm" data-remove-split="${i}" ${splits.length===1?'disabled':''}>🗑️</button></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-remove-split="${i}">🗑️</button></div>
       <button type="button" class="picker" data-pick-split="${i}" style="width:100%;margin:8px 0;">${escapeHtml(x.destinatario_nombre||'Opcional — seleccionar destinatario')}</button>
       <div class="two-col"><input type="number" inputmode="decimal" min="0.01" step="0.01" data-cant-split="${i}" placeholder="Cantidad *" value="${escapeHtml(String(x.cantidad??''))}">
       <select class="picker" data-div-split="${i}">${divisaOptionsHtml(x.divisa||'')}</select></div></div>`).join('');
@@ -171,9 +206,14 @@ function wireEntregasEnvio(pref,inicial){
     list.querySelectorAll('[data-pick-split]').forEach(btn=>btn.onclick=()=>openSelectorEntrega('destinatarios',d=>{
       if(!d)return;const x=splits[Number(btn.dataset.pickSplit)];x.destinatario_id=d.id;x.destinatario_nombre=d.nombre;render();
     }));
-    list.querySelectorAll('[data-remove-split]').forEach(btn=>btn.onclick=()=>{if(splits.length>1){splits.splice(Number(btn.dataset.removeSplit),1);render();}});
+    list.querySelectorAll('[data-remove-split]').forEach(btn=>btn.onclick=()=>{splits.splice(Number(btn.dataset.removeSplit),1);render();});
   }
-  document.getElementById(`${pref}-add-entrega`).onclick=()=>{splits.push({id:nuevoIdEntregaEnvio(),destinatario_id:null,destinatario_nombre:'',cantidad:'',divisa:''});render();};
+  document.getElementById(`${pref}-add-entrega`).onclick=()=>{
+    const cantidadGlobal=document.getElementById(`${pref}-cantidad-entregar`)?.value??'';
+    const divisaGlobal=document.getElementById(`${pref}-divisa-entrega`)?.value??'';
+    splits.push({id:nuevoIdEntregaEnvio(),destinatario_id:null,destinatario_nombre:'',cantidad:cantidadGlobal,divisa:divisaGlobal});
+    render();
+  };
   render();
   return ()=>splits.map(x=>({...x,cantidad:Number(x.cantidad),divisa:String(x.divisa||'')}));
 }
@@ -226,7 +266,7 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
   const divGananciaEl = document.getElementById('ef-divisa-ganancia');
   const monedaEl = document.getElementById('ef-moneda');
   const notaEl = document.getElementById('ef-nota');
-  const getEntregas = wireEntregasEnvio('ef', prefill ? obtenerEntregasEnvio(prefill) : null);
+  const getEntregas = wireEntregasEnvio('ef', prefill ? obtenerSplitsEnvio(prefill) : []);
   const getGananciasAdicionales = wireGananciasAdicionalesEnvio('ef', prefill ? obtenerGananciasAdicionalesEnvio(prefill) : []);
   let gananciaTouched = false;
   let referenciaTouched = false;
@@ -239,9 +279,15 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
     const cot = prefill.cotizado_a;
     const gananciaAuto = (cot===null || cot===undefined) ? null : round2(cant*(cot-precio));
     gananciaTouched = gananciaAuto===null ? true : gananciaAuto !== round2(prefill.ganancia);
+    const referenciaCalc=Number(prefill.cantidad_enviada)>0&&Number(prefill.precio)>0
+      ? round2(Number(prefill.cantidad_enviada)*Number(prefill.precio)) : null;
+    referenciaTouched=Object.prototype.hasOwnProperty.call(prefill,'cantidad_entrega_global') &&
+      (prefill.cantidad_entrega_global===null || prefill.cantidad_entrega_global==='' ||
+       referenciaCalc===null || Number(prefill.cantidad_entrega_global)!==Number(referenciaCalc));
   }
 
   bindAddOnSelect(monedaEl, addMoneda, monedaOptionsHtml);
+  bindAddOnSelect(document.getElementById('ef-divisa-entrega'), addDivisa, divisaOptionsHtml);
   bindAddOnSelect(divGananciaEl, addDivisa, divisaOptionsHtml);
 
   document.querySelectorAll('#ef-forma .pill').forEach(p=>{
@@ -316,8 +362,11 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
     const nota = notaEl.value.trim();
     const fechaVal = document.getElementById('ef-fecha').value;
     const cantidadEntregaReferencia = referenciaEl.value.trim()==='' ? null : Number(referenciaEl.value);
+    const divisa_entrega_global = document.getElementById('ef-divisa-entrega').value;
 
-    const entregasValidas = entregas.length>0 && entregas.every(x=>Number.isFinite(x.cantidad)&&x.cantidad>0&&!!x.divisa&&x.divisa!=='__add__');
+    const entregasValidas = entregas.length>0
+      ? entregas.every(x=>Number.isFinite(x.cantidad)&&x.cantidad>0&&!!x.divisa&&x.divisa!=='__add__')
+      : Number.isFinite(cantidadEntregaReferencia)&&cantidadEntregaReferencia>0&&!!divisa_entrega_global&&divisa_entrega_global!=='__add__';
     const extrasValidas = ganancias_adicionales.every(x=>Number.isFinite(x.cantidad)&&x.cantidad>0&&!!x.divisa&&x.divisa!=='__add__'&&['Efectivo','Transferencia','USD'].includes(x.forma));
     if(!Number.isFinite(cantidad_enviada)||cantidad_enviada<=0||!Number.isFinite(precio)||precio<=0||!Number.isFinite(ganancia)||
        !entregasValidas||!extrasValidas||!divisa_ganancia||divisa_ganancia==='__add__'||
@@ -330,15 +379,17 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
       cliente_id: tipo==='cliente_directo' ? entity.id : (tipo==='trabajador'?null:undefined),
       trabajador_id: tipo==='trabajador' ? entity.id : null,
       cantidad_enviada, moneda, precio,
-      cantidad_pagada: entregas[0].cantidad,
-      cotizado_a, ganancia, divisa_entrega: entregas[0].divisa, divisa_ganancia,
+      cantidad_entrega_global:cantidadEntregaReferencia,
+      divisa_entrega_global:divisa_entrega_global==='__add__'?'':divisa_entrega_global,
+      cantidad_pagada:entregas[0]?.cantidad??cantidadEntregaReferencia,
+      cotizado_a, ganancia, divisa_entrega:entregas[0]?.divisa||divisa_entrega_global, divisa_ganancia,
       forma_ganancia: formaGanancia, nota,
       fecha_hora: new Date(fechaVal).getTime(),
       descuenta_ahora: descuentaAhora,
       entregas: entregas.map(x=>({...x,id:x.id||nuevoIdEntregaEnvio()})),
       ganancias_adicionales,
-      destinatario_id: entregas[0].destinatario_id??null,
-      destinatario_nombre: entregas[0].destinatario_nombre||''
+      destinatario_id: entregas[0]?.destinatario_id??null,
+      destinatario_nombre: entregas[0]?.destinatario_nombre||''
     };
     showEnvioSummary(envio, entity, onSaved, cantidadEntregaReferencia);
   };
@@ -347,7 +398,7 @@ function wireEnvioForm(content, {tipo, getEntity, setEntity, entityRequired, onS
 }
 
 function showEnvioSummary(envio, entity, onSaved, cantidadEntregaReferencia){
-  const entregas=obtenerEntregasEnvio(envio), extras=obtenerGananciasAdicionalesEnvio(envio);
+  const splits=obtenerSplitsEnvio(envio), entregas=obtenerEntregasEnvio(envio), extras=obtenerGananciasAdicionalesEnvio(envio);
   const referencia=cantidadEntregaReferencia===null||cantidadEntregaReferencia===undefined?'—':fmtMoney(cantidadEntregaReferencia);
   openModal(`
     <div class="modal-title">Confirme los datos del envío antes de guardar.</div>
@@ -357,9 +408,11 @@ function showEnvioSummary(envio, entity, onSaved, cantidadEntregaReferencia){
       <div class="sumrow"><span class="k">Cantidad enviada</span><span class="v">${fmtMoney(envio.cantidad_enviada)}</span></div>
       <div class="sumrow"><span class="k">Moneda</span><span class="v">${escapeHtml(envio.moneda)}</span></div>
       <div class="sumrow"><span class="k">Precio</span><span class="v">${fmtMoney(envio.precio)}</span></div>
-      <div class="sumrow"><span class="k">Cantidad a entregar (referencia)</span><span class="v">${referencia}</span></div>
-      <div style="font-weight:800;margin:10px 0 4px;">Destinatarios</div>
-      ${entregas.map((x,i)=>`<div class="sumrow"><span class="k">${i+1}. ${escapeHtml(x.destinatario_nombre||entity.nombre)}</span><span class="v">${fmtMoney(x.cantidad)} ${escapeDivisa(x.divisa)}</span></div>`).join('')}
+      ${splits.length
+        ? `<div class="sumrow"><span class="k">Cantidad a entregar (plantilla)</span><span class="v">${referencia} ${escapeDivisa(envio.divisa_entrega_global)}</span></div>
+          <div style="font-weight:800;margin:10px 0 4px;">Destinatarios</div>
+          ${splits.map((x,i)=>`<div class="sumrow"><span class="k">${i+1}. ${escapeHtml(x.destinatario_nombre||'Destinatario opcional')}</span><span class="v">${fmtMoney(x.cantidad)} ${escapeDivisa(x.divisa)}</span></div>`).join('')}`
+        : `<div class="sumrow"><span class="k">Entrega</span><span class="v">${fmtMoney(envio.cantidad_entrega_global)} ${escapeDivisa(envio.divisa_entrega_global)}</span></div>`}
       <div class="sumrow"><span class="k">Cotizado a</span><span class="v">${envio.cotizado_a!==null?fmtMoney(envio.cotizado_a):'—'}</span></div>
       <div style="font-weight:800;margin:10px 0 4px;">Ganancia principal</div>
       <div class="sumrow"><span class="k">Monto</span><span class="v">${fmtMoney(envio.ganancia)} ${escapeDivisa(envio.divisa_ganancia)}</span></div>
@@ -373,11 +426,12 @@ function showEnvioSummary(envio, entity, onSaved, cantidadEntregaReferencia){
   document.getElementById('es-volver').onclick=closeModal;
   document.getElementById('es-confirmar').onclick=()=>{
     envio.id=nextId('envios');DB.envios.push(envio);
-    if(!envio.descuenta_ahora) entregas.forEach(split=>{
+    const entregasEfectivas=obtenerEntregasEnvio(envio);
+    if(!envio.descuenta_ahora) entregasEfectivas.forEach(split=>{
       const persona=split.destinatario_nombre||entity.nombre;
       crearDeudaAutomatica({tipo:'pagar_a',persona:`${persona} – ${fmtMoney(split.cantidad)} ${split.divisa}`,
         monto:split.cantidad,divisa:split.divisa,fecha:envio.fecha_hora,nota:envio.nota||'Registrado desde envío',
-        origen:'envio',origen_id:envio.id,origen_detalle_id:split.id});
+        origen:'envio',origen_id:envio.id,origen_detalle_id:splits.length?split.id:null});
     });
     applyEnvioBalance(envio,1);save();closeModal();toast('Envío guardado correctamente');
     onSaved&&onSaved();

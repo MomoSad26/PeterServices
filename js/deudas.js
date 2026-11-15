@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------- *
  * 18. MENÚ 9 — DEUDAS
  * ---------------------------------------------------------------------- */
-function crearDeudaAutomatica({tipo, persona, monto, divisa, fecha, nota, origen, origen_id, tipo_me_deben, comprador_id, comprador_nombre, comprador_nombre_completo, comprador_telefono, comprador_direccion}){
+function crearDeudaAutomatica({tipo, persona, monto, divisa, fecha, nota, origen, origen_id, origen_detalle_id, tipo_me_deben, comprador_id, comprador_nombre, comprador_nombre_completo, comprador_telefono, comprador_direccion}){
   const deuda = {
     id: nextId('deudas'), tipo, persona, monto, divisa, fecha,
     creado_en: Date.now(),
@@ -9,6 +9,9 @@ function crearDeudaAutomatica({tipo, persona, monto, divisa, fecha, nota, origen
     estado: 'pendiente', fecha_cierre: null, nota,
     origen, origen_id
   };
+  if(origen_detalle_id!==undefined && origen_detalle_id!==null){
+    deuda.origen_detalle_id=origen_detalle_id;
+  }
   if(tipo==='me_deben' && tipo_me_deben!==undefined && tipo_me_deben!==null){
     deuda.tipo_me_deben = tipo_me_deben;
   }
@@ -371,6 +374,106 @@ function openDeudaForm(tipo, onSaved){
   };
 }
 
+function deudaEsManualPendiente(d){
+  return !!d && d.origen===null && d.estado==='pendiente';
+}
+
+function openDeudaEditModal(id,onSaved){
+  const d=DB.deudas.find(x=>x.id===id);
+  if(!deudaEsManualPendiente(d)){toast('Solo se pueden editar deudas manuales pendientes.');return;}
+  const esMeDeben=d.tipo==='me_deben';
+  let compradorManual=esMeDeben
+    ? ((DB.compradores||[]).find(c=>String(c.id)===String(d.comprador_id)) ||
+       (DB.compradores||[]).find(c=>normalizarTexto(c.nombre)===normalizarTexto(d.comprador_nombre||d.persona||'')) || null)
+    : null;
+  let afectaBalance=esMeDeben?meDebenTipo(d):(d.afecta_balance?1:0);
+  openModal(`
+    <div class="modal-title">${esMeDeben?'Editar registro — Me deben':'Editar deuda — Pagar a'}</div>
+    <label class="field-label">Persona / Entidad *</label>
+    <input type="text" id="de-persona" maxlength="100" value="${escapeHtml(d.persona||'')}" placeholder="Nombre de la persona o entidad">
+    ${esMeDeben?'<label class="field-label">Comprador (opcional)</label><div id="de-comprador-wrap"></div>':''}
+    <label class="field-label">Monto *</label>
+    <input type="number" inputmode="decimal" step="0.01" id="de-monto" value="${escapeHtml(String(d.monto??''))}" placeholder="0.00">
+    <label class="field-label">Divisa *</label>
+    <select id="de-divisa" class="picker">${divisaOptionsHtml(d.divisa||'')}</select>
+    <label class="field-label">Fecha *</label>
+    <input type="date" id="de-fecha" value="${fechaLocalISO(d.fecha)}">
+    ${esMeDeben?`
+      <label class="field-label">Tipo de registro</label>
+      <div class="pill-row" id="de-afecta">
+        <div class="pill ${afectaBalance===MEDEBEN_INFORMATIVO?'active':''}" data-v="0">Informativo</div>
+        <div class="pill ${afectaBalance===MEDEBEN_PRESTAMO?'active':''}" data-v="1">Préstamo</div>
+        <div class="pill ${afectaBalance===MEDEBEN_SUMAR_AL_COBRAR?'active':''}" data-v="2">Sumar al cobrar</div>
+      </div>
+      <div class="hint">Informativo: no modifica el balance. Préstamo: resta al registrarse y devuelve al cobrar. Sumar al cobrar: suma al marcar como cobrado.</div>
+    `:`
+      <label class="field-label">Descontar del balance general al pagar</label>
+      <div class="pill-row" id="de-afecta">
+        <div class="pill ${afectaBalance===0?'active':''}" data-v="0">No</div>
+        <div class="pill ${afectaBalance===1?'active':''}" data-v="1">Sí</div>
+      </div>
+      <div class="hint">Si activa esta opción, el monto se resta cuando marque el registro como pagado.</div>
+    `}
+    <label class="field-label">Nota</label>
+    <textarea id="de-nota" maxlength="500" placeholder="Opcional">${escapeHtml(d.nota||'')}</textarea>
+    <div class="modal-actions">
+      <button class="btn btn-outline btn-block" id="de-cancel">Cancelar</button>
+      <button class="btn btn-primary btn-block" id="de-save">Guardar cambios</button>
+    </div>
+  `);
+  bindAddOnSelect(document.getElementById('de-divisa'),addDivisa,divisaOptionsHtml);
+  if(esMeDeben){
+    const wrap=document.getElementById('de-comprador-wrap');
+    function pintarComprador(){
+      wrap.innerHTML=compradorManual
+        ? `<div style="display:flex;gap:8px;"><button type="button" class="picker" style="flex:1" id="de-comprador-picker">${escapeHtml(compradorManual.nombre)}</button><button type="button" class="btn btn-outline" id="de-comprador-clear">Quitar</button></div>`
+        : '<button type="button" class="picker" id="de-comprador-picker">Seleccionar comprador</button>';
+      document.getElementById('de-comprador-picker').onclick=()=>openSelectorComprador(c=>{compradorManual=c;document.getElementById('de-persona').value=c.nombre;pintarComprador();});
+      const quitar=document.getElementById('de-comprador-clear');
+      if(quitar)quitar.onclick=()=>{compradorManual=null;pintarComprador();};
+    }
+    pintarComprador();
+  }
+  document.querySelectorAll('#de-afecta .pill').forEach(p=>{
+    p.onclick=()=>{
+      document.querySelectorAll('#de-afecta .pill').forEach(x=>x.classList.remove('active'));
+      p.classList.add('active');afectaBalance=Number(p.dataset.v);
+    };
+  });
+  document.getElementById('de-cancel').onclick=closeModal;
+  document.getElementById('de-save').onclick=()=>{
+    const persona=document.getElementById('de-persona').value.trim();
+    const monto=Number(document.getElementById('de-monto').value);
+    const divisa=document.getElementById('de-divisa').value;
+    const fechaVal=document.getElementById('de-fecha').value;
+    const nota=document.getElementById('de-nota').value.trim();
+    if(!persona||!Number.isFinite(monto)||monto<=0||!divisa||divisa==='__add__'||!fechaVal){
+      toast('Revise la persona, el monto, la divisa y la fecha.');return;
+    }
+    // Revertir únicamente el efecto que ya había producido el préstamo original.
+    if(esMeDeben&&meDebenRestaAlCrear(d))adjustBalance(d.divisa,Number(d.monto||0));
+    d.persona=persona;d.monto=monto;d.divisa=divisa;
+    d.fecha=fechaInputAInicioDeDiaLocal(fechaVal);d.nota=nota;
+    d.origen=null;d.origen_id=null;
+    if(esMeDeben){
+      d.tipo_me_deben=afectaBalance;
+      d.afecta_balance=afectaBalance===MEDEBEN_PRESTAMO?1:0;
+      const compradorAsignado=(compradorManual&&normalizarTexto(compradorManual.nombre)===normalizarTexto(persona))
+        ? compradorManual
+        : (DB.compradores||[]).find(c=>normalizarTexto(c.nombre)===normalizarTexto(persona)&&c.activo) || null;
+      ['comprador_id','comprador_nombre','comprador_nombre_completo','comprador_telefono','comprador_direccion'].forEach(k=>delete d[k]);
+      if(compradorAsignado){
+        d.persona=compradorAsignado.nombre;
+        Object.assign(d,compradorSnapshot(compradorAsignado));
+      }
+      if(meDebenRestaAlCrear(d))adjustBalance(d.divisa,-d.monto);
+    }else{
+      d.afecta_balance=afectaBalance?1:0;
+    }
+    save();closeModal();toast('Deuda actualizada');onSaved&&onSaved();
+  };
+}
+
 function openDeudaDetalle(id, onChange){
   const d = DB.deudas.find(x=>x.id===id);
   if(!d) return;
@@ -407,12 +510,15 @@ function openDeudaDetalle(id, onChange){
   const actionsBottom = document.getElementById('dd-actions-bottom');
   actionsTop.innerHTML = `
     <button class="btn btn-outline btn-block" id="dd-aceptar">✅ Aceptar</button>
+    ${deudaEsManualPendiente(d)?'<button class="btn btn-primary btn-block" id="dd-edit">✏️ Editar</button>':''}
     <button class="btn btn-danger btn-block" id="dd-del">Eliminar</button>
   `;
   if(d.estado==='pendiente'){
     actionsBottom.innerHTML = `<button class="btn btn-gold btn-block" id="dd-cerrar">${esMeDeben?'Marcar como cobrado':'Marcar como pagado'}</button>`;
   }
   document.getElementById('dd-aceptar').onclick = volverDesdeDetalleMovimiento;
+  const editarBtn=document.getElementById('dd-edit');
+  if(editarBtn)editarBtn.onclick=()=>openDeudaEditModal(d.id,()=>openDeudaDetalle(d.id,onChange));
   const mensajeroBtn = document.getElementById('dd-mensajero-btn');
   if(mensajeroBtn) mensajeroBtn.onclick = ()=> enviarEntregaAMensajero(envioParaMensajero, ()=>{
     const fila=document.getElementById('dd-mensajero-row'),txt=document.getElementById('dd-mensajero');
@@ -633,7 +739,12 @@ function openDeudaGrupoDetalle(clave,onChange,estado='pendiente'){
 function openDeudaGrupoDetalleGrupo(g,onChange,estado='pendiente'){
   const c=g.comprador||{};
   const notas=[...new Set(g.items.map(d=>String(d.nota||'').trim()).filter(Boolean))];
-  const detalle=g.items.map(d=>{const v=d.origen==='venta'?DB.ventas.find(x=>x.id===d.origen_id):null;const concepto=v?`Venta de ${fmtMoney(v.cantidad_vendida)} ${nombreDivisaVisible(v.divisa_vendida)}`:'Registro manual';return `<div class="sumrow"><span class="k">${fmtDateShort(v?.fecha_hora||d.fecha)} · ${escapeHtml(concepto)}</span><span class="v">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</span></div>`;}).join('');
+  const detalle=g.items.map(d=>{
+    const v=d.origen==='venta'?DB.ventas.find(x=>x.id===d.origen_id):null;
+    const concepto=v?`Venta de ${fmtMoney(v.cantidad_vendida)} ${nombreDivisaVisible(v.divisa_vendida)}`:'Registro manual';
+    return `<div class="sumrow"><span class="k">${fmtDateShort(v?.fecha_hora||d.fecha)} · ${escapeHtml(concepto)}</span><span class="v">${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)}</span></div>`
+      + (deudaEsManualPendiente(d)?`<div style="display:flex;justify-content:flex-end;margin:-2px 0 8px;"><button class="btn btn-outline btn-sm" data-edit-deuda="${d.id}">✏️ Editar este registro</button></div>`:'');
+  }).join('');
   const pendiente=estado==='pendiente';
   openModal(`
     <div class="modal-title">🤝 ${escapeHtml(nombreGrupoMeDeben(g))}</div>
@@ -656,6 +767,10 @@ function openDeudaGrupoDetalleGrupo(g,onChange,estado='pendiente'){
     <div class="modal-actions"><button class="btn btn-danger btn-block" id="ddg-eliminar">🗑️ Eliminar grupo${g.items.some(d=>d.origen==='venta')?' y ventas vinculadas':''}</button></div>
   `);
   document.getElementById('ddg-aceptar').onclick=()=>retornoHistorialDivisa?volverDesdeDetalleMovimiento():closeModal();
+  document.querySelectorAll('[data-edit-deuda]').forEach(btn=>btn.onclick=()=>{
+    const deudaId=Number(btn.dataset.editDeuda);
+    openDeudaEditModal(deudaId,()=>openDeudaGrupoDetallePorId(deudaId,onChange,estado));
+  });
   const enviar=document.getElementById('ddg-mensajero');if(enviar)enviar.onclick=()=>enviarGrupoMeDebenAlMensajero(g,()=>openDeudaGrupoDetallePorId(g.items[0]?.id,onChange,estado));
   const cobrar=document.getElementById('ddg-cobrar');
   if(cobrar)cobrar.onclick=()=>confirmDialog(`¿Marcar como cobrada la deuda completa de ${escapeHtml(nombreGrupoMeDeben(g))} por ${fmtMoney(g.monto)} ${escapeDivisa(g.divisa)}?${g.tipo_me_deben===MEDEBEN_INFORMATIVO?' No se modificará el balance.':' Se sumará el monto al balance de esa divisa.'}`,()=>{

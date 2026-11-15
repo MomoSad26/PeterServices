@@ -89,7 +89,21 @@ function envioTieneDivisa(e,nombre){
 }
 function entregaEnvioDeDeuda(deuda,envio){
   const entregas=obtenerEntregasEnvio(envio);
-  if(deuda?.origen_detalle_id!=null)return entregas.find(x=>String(x.id)===String(deuda.origen_detalle_id))||null;
+  if(deuda?.origen_detalle_id!=null){
+    const porId=entregas.find(x=>String(x.id)===String(deuda.origen_detalle_id));
+    if(porId)return porId;
+  }
+  // Compatibilidad con deudas creadas antes de guardar origen_detalle_id:
+  // el nombre, el importe y la divisa suelen identificar de forma única el split.
+  if(deuda){
+    const personaDeuda=normalizarTexto(String(deuda.persona||''));
+    const coincidencias=entregas.filter(x=>{
+      const nombre=normalizarTexto(x.destinatario_nombre||'');
+      const coincideNombre=nombre && (personaDeuda===nombre || personaDeuda.startsWith(nombre+' – '));
+      return coincideNombre && Number(x.cantidad)===Number(deuda.monto) && mismasDivisas(x.divisa,deuda.divisa);
+    });
+    if(coincidencias.length===1)return coincidencias[0];
+  }
   return entregas[0]||null;
 }
 function deudaEnvioDescuentaBalance(deuda,envio){

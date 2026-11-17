@@ -476,6 +476,51 @@ function pruebasEstaticas(){
       'editar «Pagar a» permite modificar monto y descuento al pagar');
     await p.evaluate(()=>closeModal()); await espera(350);
 
+    seccion('6d. Tarifa del mensajero en «Me deben» (una vez por viaje)');
+    const viaje=await p.evaluate(({d1,d2})=>{
+      const c={id:nextId('compradores'),nombre:'Viaje Prueba',nombre_completo:'',telefono:'+53 5 7778888',direccion:'Calle V',activo:1};
+      DB.compradores.push(c);
+      const m=DB.mensajeros.find(x=>x.nombre==='Tito Tarifa'); m.tarifa=50; m.divisa_descuento=d1;
+      const nueva=(monto,divisa)=>{const d={id:nextId('deudas'),tipo:'me_deben',persona:c.nombre,monto,divisa,fecha:Date.now(),creado_en:Date.now(),
+        afecta_balance:0,estado:'pendiente',fecha_cierre:null,nota:'',origen:null,origen_id:null,tipo_me_deben:MEDEBEN_SUMAR_AL_COBRAR,
+        comprador_id:c.id,comprador_nombre:c.nombre,comprador_nombre_completo:'',comprador_telefono:c.telefono,comprador_direccion:c.direccion};
+        DB.deudas.push(d);return d.id;};
+      const ids=[nueva(100,d1),nueva(20,d1),nueva(7,d2)];
+      save();return {ids,tito:m.id};
+    },{d1:D1,d2:D2});
+    await ir('#/deudas/me_deben'); await clic('#deudas-tabs .tab[data-v="me_deben"]',350);
+    await clicFila('#deudas-list','Viaje Prueba');
+    await clic('#ddg-mensajero',300); await clic(`#sel-ent-list [data-pick="${viaje.tito}"]`,400);
+    check(await p.evaluate(ids=>ids.every(id=>DB.deudas.find(d=>d.id===id).mensajero_notificado_id!=null),viaje.ids),
+      'el aviso al mensajero marca todas las divisas pendientes del comprador');
+    await p.evaluate(()=>closeModal()); await espera(350);
+    let vj1=await saldo(D1), vj2=await saldo(D2);
+    // Cobro del grupo en D1 (dos deudas): +120 y −50 de tarifa, una sola vez.
+    await p.evaluate(id=>{location.hash='#/deudas/me_deben';},null); await espera(200);
+    await p.evaluate(id=>openDeudaGrupoDetallePorId(id,()=>route()),viaje.ids[0]); await espera(350);
+    await clic('#ddg-cobrar',300);
+    check((await texto('.modal-msg')).includes('Además se descontará la tarifa de Tito Tarifa'),'la confirmación avisa de la tarifa');
+    await clic('#cd-ok',450);
+    check(await saldo(D1)===vj1+120-50,'cobrar el grupo suma lo cobrado y descuenta la tarifa una sola vez');
+    check(await p.evaluate(ids=>DB.deudas.filter(d=>ids.includes(d.id)&&d.tarifa_mensajero).length,viaje.ids)===1,'la tarifa queda guardada en un solo registro del viaje');
+    // Cobro del grupo en D2 del mismo viaje: no se cobra otra tarifa.
+    await p.evaluate(id=>openDeudaGrupoDetallePorId(id,()=>route()),viaje.ids[2]); await espera(350);
+    await clic('#ddg-cobrar',300);
+    check(!(await texto('.modal-msg')).includes('tarifa'),'el mismo viaje en otra divisa no vuelve a anunciar tarifa');
+    await clic('#cd-ok',450);
+    check(await saldo(D2)===vj2+7 && await saldo(D1)===vj1+70,'el mismo viaje en otra divisa no descuenta otra tarifa');
+    check(await p.evaluate(n=>movimientosDeDivisa(n).some(m=>m.tipo==='Tarifa mensajero'&&m.concepto==='Tarifa de Tito Tarifa'&&m.monto===-50),D1),'«Me deben» registra la tarifa en el historial por divisa');
+    // Eliminar el grupo cobrado de D1: el viaje sigue en D2, la tarifa pasa a ese registro.
+    await p.evaluate(id=>openDeudaGrupoDetallePorId(id,()=>route(),'cobrado'),viaje.ids[0]); await espera(350);
+    await clic('#ddg-eliminar',300); await clic('#cd-ok',450);
+    check(await saldo(D1)===vj1-50,'eliminar parte del viaje revierte esos cobros pero conserva la tarifa del viaje');
+    check(await p.evaluate(id=>!!DB.deudas.find(d=>d.id===id).tarifa_mensajero,viaje.ids[2]),'la tarifa pasa al registro que queda del viaje');
+    // Eliminar el último registro del viaje revierte la tarifa.
+    await p.evaluate(id=>openDeudaDetalle(id,()=>route()),viaje.ids[2]); await espera(350);
+    await clic('#dd-del',300); await clic('#cd-ok',450);
+    check(await saldo(D1)===vj1 && await saldo(D2)===vj2,'eliminar el último registro del viaje revierte la tarifa');
+    await ir('#/panel');
+
     seccion('7. Gastos: balance, eliminar y Deshacer');
     await ir('#/gastos');
     const g0 = await saldo(D1);

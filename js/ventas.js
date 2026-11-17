@@ -162,6 +162,7 @@ function openVentaDetalle(id, onChange, opts={}){
         const deudaAsociada = DB.deudas.find(d=>d.origen==='venta' && d.origen_id===v.id);
         if(deudaAsociada){
           if(deudaAsociada.estado==='cobrado') adjustBalance(deudaAsociada.divisa, -deudaAsociada.monto);
+          liberarTarifaMensajero(deudaAsociada, new Set([deudaAsociada.id])); // tarifa del mensajero que la cobró
           DB.deudas = DB.deudas.filter(x=>x.id!==deudaAsociada.id);
         }
       } else {

@@ -1,3 +1,10 @@
+## 2026-11-17 — Tarifa del mensajero también en «Me deben»
+
+- Al marcar cobrada una deuda o un grupo de «Me deben» que se envió a un mensajero con tarifa y divisa de descuento, se descuenta su tarifa (misma confirmación, mismo aviso si falta la divisa y mismo registro «Tarifa mensajero» en el historial por divisa).
+- **Una vez por viaje:** un aviso al mensajero (mismo mensajero y misma fecha de aviso) es un viaje, aunque cubra varias divisas o registros. La tarifa se guarda en un solo registro; los demás cobros del mismo viaje no la repiten.
+- **Reversión:** al eliminar una deuda cobrada, un grupo o una venta con deuda cobrada, la tarifa pasa a otro registro cobrado del mismo viaje si queda alguno; si no, se devuelve al balance. La importación de respaldos también cuenta la tarifa de deudas cobradas.
+- El formulario de mensajero es único en toda la app (Entregas, detalle y «+ nuevo» desde los selectores), así que Tarifa y Divisa de descuento ya estaban disponibles en todos esos sitios. Pruebas: sección 6d, 113 comprobaciones OK. Caché PWA `remesas-v40`. No se compiló APK.
+
 ## 2026-11-17 — Nombres en «Pagar a», botón de destinatarios y tarifa de mensajeros
 
 - **Nombre de las deudas de envío:** una sola función (`personaDeudaEnvio`) genera el nombre al crear, al editar el envío y en el normalizador del arranque. Con 0 o 1 destinatario se usa el cliente/trabajador; con 2 o más, el destinatario de cada split (si falta, el cliente). Formato `[nombre] – [cantidad] [divisa]`, con la cantidad y divisa de la entrega. Antes el alta usaba el destinatario y el arranque lo reescribía con el cliente y la cantidad enviada, por eso el nombre cambiaba al recargar.

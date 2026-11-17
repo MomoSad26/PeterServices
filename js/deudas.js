@@ -550,9 +550,7 @@ function openDeudaDetalle(id, onChange){
           const msg = descuentaAlPagar
             ? `Confirmar entrega de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción RESTARÁ el monto de esta entrega del balance general.`
             : `Confirmar entrega de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} a ${escapeHtml(textoDivisasVisibles(d.persona))}? La ganancia de este envío ya fue reconocida en esta divisa, así que esta acción NO modificará el balance general.`;
-          const tarifaPrevista=tarifaMensajeroAplicable(d,envioOrigen);
-          const msgTarifa=tarifaPrevista.estado==='aplica'
-            ? ` Además se descontará la tarifa de ${escapeHtml(tarifaPrevista.mensajero.nombre)}: ${fmtMoney(tarifaPrevista.mensajero.tarifa)} ${escapeDivisa(tarifaPrevista.mensajero.divisa_descuento)}.` : '';
+          const msgTarifa=textoTarifaPrevista(d,envioOrigen);
           confirmDialog(msg+msgTarifa, ()=>{
             d.estado = 'pagado'; d.fecha_cierre = Date.now();
             if(descuentaAlPagar) adjustBalance(d.divisa,-Number(d.monto||0));
@@ -564,15 +562,9 @@ function openDeudaDetalle(id, onChange){
               cantidad_pagada:entregaNotificada.cantidad,divisa_entrega:entregaNotificada.divisa,
               destinatario_id:entregaNotificada.destinatario_id,destinatario_nombre:entregaNotificada.destinatario_nombre}:envioOrigen;
             const ofrecerAviso=()=>ofrecerNotificarWhatsApp(envioNotificacion,d.fecha_cierre);
-            if(tarifa.estado==='sin_divisa'){
-              // La deuda ya quedó pagada; se avisa y después se ofrece WhatsApp.
-              openModal(`
-                <div class="modal-title">Tarifa no descontada</div>
-                <div class="modal-msg">Este mensajero tiene tarifa pero no tiene divisa de descuento configurada. Edítalo para poder descontar la tarifa.</div>
-                <div class="modal-actions"><button class="btn btn-primary btn-block" id="tm-ok">Entendido</button></div>
-              `,{center:true});
-              document.getElementById('tm-ok').onclick=()=>{closeModal();ofrecerAviso();};
-            }else ofrecerAviso();
+            // La deuda ya quedó pagada; si la tarifa no se pudo descontar se
+            // avisa y después se ofrece WhatsApp.
+            if(tarifa.estado==='sin_divisa')avisarTarifaSinDivisa(ofrecerAviso);else ofrecerAviso();
           }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
           return;
         }
@@ -586,15 +578,19 @@ function openDeudaDetalle(id, onChange){
           save(); closeModal(); toast('Deuda marcada como pagada — pasó al Historial'); onChange && onChange();
         }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
       } else if(meDebenSumaAlCobrar(d)){
-        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} de ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción SUMARÁ ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} al balance general.`, ()=>{
+        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} de ${escapeHtml(textoDivisasVisibles(d.persona))}? Esta acción SUMARÁ ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} al balance general.${textoTarifaPrevista(d)}`, ()=>{
           d.estado = 'cobrado'; d.fecha_cierre = Date.now();
           adjustBalance(d.divisa, d.monto);
+          const tarifa=aplicarTarifaMensajeroAlPagar(d);
           save(); closeModal(); toast('Cobro registrado — pasó al Historial'); onChange && onChange();
+          if(tarifa.estado==='sin_divisa')avisarTarifaSinDivisa();
         }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
       } else {
-        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} de ${escapeHtml(textoDivisasVisibles(d.persona))}?`, ()=>{
+        confirmDialog(`Confirmar cobro de ${fmtMoney(d.monto)} ${escapeDivisa(d.divisa)} de ${escapeHtml(textoDivisasVisibles(d.persona))}?${textoTarifaPrevista(d)}`, ()=>{
           d.estado = 'cobrado'; d.fecha_cierre = Date.now();
+          const tarifa=aplicarTarifaMensajeroAlPagar(d);
           save(); closeModal(); toast('Cobro registrado — pasó al Historial'); onChange && onChange();
+          if(tarifa.estado==='sin_divisa')avisarTarifaSinDivisa();
         }, {okLabel:'Confirmar', cancelLabel:'Cancelar', danger:false});
       }
     };
@@ -603,6 +599,7 @@ function openDeudaDetalle(id, onChange){
     closeModal();
     confirmDialog(`¿Eliminar este registro de ${escapeHtml(textoDivisasVisibles(d.persona))}?`, ()=> eliminarConDeshacer('Deuda eliminada', ()=>{
       if(d.tipo==='me_deben'){
+        liberarTarifaMensajero(d,new Set([d.id]));
         if(meDebenRestaAlCrear(d)){
           if(d.estado==='pendiente') adjustBalance(d.divisa, d.monto);
         } else if(meDebenSumaAlCobrar(d) && d.estado==='cobrado'){
@@ -726,7 +723,9 @@ function enviarGrupoMeDebenAlMensajero(g,onNotificado){
 }
 function eliminarGrupoMeDeben(g,onChange){
   eliminarConDeshacer('Deuda consolidada eliminada',()=>{
+    const idsGrupo=new Set(g.items.map(d=>d.id));
     g.items.forEach(d=>{
+      liberarTarifaMensajero(d,idsGrupo);
       if(d.origen==='venta'){
         const v=DB.ventas.find(x=>x.id===d.origen_id);
         if(v){
@@ -777,6 +776,7 @@ function openDeudaGrupoDetalleGrupo(g,onChange,estado='pendiente'){
       <div class="sumrow"><span class="k">Primera venta/registro</span><span class="v">${fmtDateShort(g.fecha_primera)}</span></div>
       <div class="sumrow"><span class="k">Última venta/registro</span><span class="v">${fmtDateShort(g.fecha_ultima)}</span></div>
       <div class="sumrow"><span class="k">Nota consolidada</span><span class="v">${escapeHtml(notas.join(' · ')||'Sin nota')}</span></div>
+      ${g.items.filter(d=>d.tarifa_mensajero).map(d=>`<div class="sumrow"><span class="k">Tarifa mensajero</span><span class="v">-${fmtMoney(d.tarifa_mensajero.monto)} ${escapeDivisa(d.tarifa_mensajero.divisa)} (${escapeHtml(d.tarifa_mensajero.mensajero_nombre||'')})</span></div>`).join('')}
       ${mensajeroNotificadoGrupoTexto(g)?`<div class="sumrow"><span class="k">Mensajero notificado</span><span class="v">${escapeHtml(mensajeroNotificadoGrupoTexto(g))}</span></div>`:''}
     </div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:10px;"><div style="font-weight:800;margin-bottom:8px;">Ventas y registros que componen la deuda</div>${detalle}</div>
@@ -792,9 +792,14 @@ function openDeudaGrupoDetalleGrupo(g,onChange,estado='pendiente'){
   });
   const enviar=document.getElementById('ddg-mensajero');if(enviar)enviar.onclick=()=>enviarGrupoMeDebenAlMensajero(g,()=>{closeModal();openDeudaGrupoDetallePorId(g.items[0]?.id,onChange,estado);}); // se cierra el detalle viejo antes de reabrirlo (evita ids duplicados)
   const cobrar=document.getElementById('ddg-cobrar');
-  if(cobrar)cobrar.onclick=()=>confirmDialog(`¿Marcar como cobrada la deuda completa de ${escapeHtml(nombreGrupoMeDeben(g))} por ${fmtMoney(g.monto)} ${escapeDivisa(g.divisa)}?${g.tipo_me_deben===MEDEBEN_INFORMATIVO?' No se modificará el balance.':' Se sumará el monto al balance de esa divisa.'}`,()=>{
+  // La tarifa del mensajero se cobra UNA vez por viaje: se guarda en un solo
+  // registro del grupo (el notificado más recientemente).
+  const deudaViaje=deudaDelViajeMensajero(g.items);
+  if(cobrar)cobrar.onclick=()=>confirmDialog(`¿Marcar como cobrada la deuda completa de ${escapeHtml(nombreGrupoMeDeben(g))} por ${fmtMoney(g.monto)} ${escapeDivisa(g.divisa)}?${g.tipo_me_deben===MEDEBEN_INFORMATIVO?' No se modificará el balance.':' Se sumará el monto al balance de esa divisa.'}${deudaViaje?textoTarifaPrevista(deudaViaje):''}`,()=>{
     const fecha=Date.now();g.items.forEach(d=>{d.estado='cobrado';d.fecha_cierre=fecha;if(meDebenSumaAlCobrar(d))adjustBalance(d.divisa,Number(d.monto||0));});
+    const tarifa=deudaViaje?aplicarTarifaMensajeroAlPagar(deudaViaje):{estado:'no_aplica'};
     save();closeModal();toast('Deuda consolidada cobrada — pasó al Historial');onChange&&onChange();
+    if(tarifa.estado==='sin_divisa')avisarTarifaSinDivisa();
   },{okLabel:'Marcar como cobrado',cancelLabel:'Cancelar',danger:false});
   document.getElementById('ddg-eliminar').onclick=()=>confirmDialog(`¿Eliminar este grupo?${g.items.some(d=>d.origen==='venta')?' También se eliminarán las ventas vinculadas y se revertirá su impacto para evitar ventas con deudas huérfanas.':''}`,()=>{closeModal();eliminarGrupoMeDeben(g,onChange);},{okLabel:'Eliminar',cancelLabel:'Cancelar',danger:true});
 }
@@ -802,7 +807,9 @@ function openDeudaGrupoDetalleGrupo(g,onChange,estado='pendiente'){
 /* ---------------------------------------------------------------------- *
  * 18c. TARIFA DEL MENSAJERO
  *      Al marcar como pagada una deuda de envío de «Pagar a» que se envió a
- *      un mensajero, se resta su tarifa de su divisa de descuento. Lo que se
+ *      un mensajero, se resta su tarifa de su divisa de descuento. Lo mismo
+ *      en «Me deben» al marcar cobrada una deuda (o un grupo: una sola vez por
+ *      viaje) que se envió a un mensajero. Lo que se
  *      descontó se guarda en la propia deuda (`tarifa_mensajero`): así, si
  *      después se edita o elimina el mensajero, la tarifa ya aplicada no
  *      cambia, y si se elimina la deuda (o su envío) se revierte exactamente.
@@ -819,10 +826,15 @@ function mensajeroDeDeuda(d, envio){
 }
 // {estado:'aplica'|'sin_divisa'|'no_aplica', mensajero}
 function tarifaMensajeroAplicable(d, envio){
-  if(!d || d.tipo!=='pagar_a' || d.origen!=='envio') return {estado:'no_aplica', mensajero:null};
+  // «Pagar a»: solo deudas de envío (las manuales no se envían a mensajero).
+  // «Me deben»: cualquier deuda que se haya enviado a un mensajero.
+  if(!d || (d.tipo==='pagar_a' && d.origen!=='envio')) return {estado:'no_aplica', mensajero:null};
   const m = mensajeroDeDeuda(d, envio);
   const tarifa = Number(m && m.tarifa);
   if(!m || !Number.isFinite(tarifa) || tarifa<=0) return {estado:'no_aplica', mensajero:m};
+  // Un aviso al mensajero es un viaje (cubre todas las divisas del comprador):
+  // si otro registro de ese viaje ya pagó la tarifa, no se cobra otra vez.
+  if(d.tipo==='me_deben' && DB.deudas.some(x=>x.id!==d.id && x.tarifa_mensajero && mismoViajeMensajero(x,d))) return {estado:'ya_cobrada', mensajero:m};
   if(!m.divisa_descuento || !findDivisa(m.divisa_descuento)) return {estado:'sin_divisa', mensajero:m};
   return {estado:'aplica', mensajero:m};
 }
@@ -840,5 +852,40 @@ function revertirTarifaMensajero(d){
   if(!d || !d.tarifa_mensajero) return;
   adjustBalance(d.tarifa_mensajero.divisa, Number(d.tarifa_mensajero.monto||0));
   delete d.tarifa_mensajero;
+}
+// Texto que se añade a la confirmación de cobro/pago cuando habrá tarifa.
+function textoTarifaPrevista(d, envio){
+  const r=tarifaMensajeroAplicable(d, envio);
+  return r.estado==='aplica' ? ` Además se descontará la tarifa de ${escapeHtml(r.mensajero.nombre)}: ${fmtMoney(r.mensajero.tarifa)} ${escapeDivisa(r.mensajero.divisa_descuento)}.` : '';
+}
+function avisarTarifaSinDivisa(despues){
+  openModal(`
+    <div class="modal-title">Tarifa no descontada</div>
+    <div class="modal-msg">Este mensajero tiene tarifa pero no tiene divisa de descuento configurada. Edítalo para poder descontar la tarifa.</div>
+    <div class="modal-actions"><button class="btn btn-primary btn-block" id="tm-ok">Entendido</button></div>
+  `,{center:true});
+  document.getElementById('tm-ok').onclick=()=>{closeModal();despues&&despues();};
+}
+// Registro de un grupo de «Me deben» que representa el viaje del mensajero:
+// el notificado más recientemente. null si ninguno se envió a un mensajero.
+function mismoViajeMensajero(a,b){
+  return a.tipo==='me_deben' && b.tipo==='me_deben' && a.mensajero_notificado_id!=null &&
+    a.mensajero_notificado_id===b.mensajero_notificado_id && Number(a.mensajero_notificado_fecha||0)===Number(b.mensajero_notificado_fecha||0);
+}
+function deudaDelViajeMensajero(items){
+  return (items||[]).filter(d=>d.mensajero_notificado_id!=null)
+    .sort((a,b)=>Number(b.mensajero_notificado_fecha||0)-Number(a.mensajero_notificado_fecha||0))[0]||null;
+}
+// Al eliminar una deuda de «Me deben» con tarifa: si quedan otros registros
+// cobrados en el MISMO viaje (mismo mensajero y mismo aviso) la tarifa pasa a uno de
+// ellos (el viaje sigue existiendo); si no queda ninguno, se revierte.
+// `idsEliminados`: todos los registros que se borran en la misma operación.
+function liberarTarifaMensajero(d, idsEliminados){
+  if(!d || !d.tarifa_mensajero) return;
+  const t=d.tarifa_mensajero;
+  const heredera=d.tipo==='me_deben' ? DB.deudas.find(x=>x.id!==d.id && !(idsEliminados&&idsEliminados.has(x.id)) &&
+    x.estado==='cobrado' && !x.tarifa_mensajero && mismoViajeMensajero(x,d)) : null;
+  if(heredera){ heredera.tarifa_mensajero=t; delete d.tarifa_mensajero; }
+  else revertirTarifaMensajero(d);
 }
 

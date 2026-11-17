@@ -118,6 +118,7 @@ function openVerArchivadosModal(){
     document.querySelectorAll('.va-restaurar').forEach(btn=>{
       btn.onclick = ()=>{
         desarchivarRegistro(btn.dataset.key, Number(btn.dataset.id));
+        closeModal(); // se cierra la lista vieja antes de redibujarla: dos copias apiladas dejaban sin efecto «Cerrar»
         toast('Registro desarchivado');
         render();
       };

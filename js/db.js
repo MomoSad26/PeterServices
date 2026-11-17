@@ -74,9 +74,13 @@ function normalizarNombresDeudasAutomaticas(){
         if(d.persona!==persona){ d.persona = persona; changed = true; }
       }
     } else if(d.origen==='envio'){
+      // Misma regla que al crear la deuda (personaDeudaEnvio): antes se
+      // reescribía aquí con el monto ENVIADO y siempre el cliente, así que el
+      // nombre cambiaba al reiniciar y los envíos con 2+ destinatarios
+      // quedaban con deudas indistinguibles.
       const e = DB.envios.find(x=>x.id===d.origen_id);
       if(e){
-        const persona = `${entityNameForEnvio(e)} – ${fmtMoney(e.cantidad_enviada)} ${e.moneda}`;
+        const persona = personaDeudaEnvio(e, entregaEnvioDeDeuda(d, e));
         if(d.persona!==persona){ d.persona = persona; changed = true; }
       }
     }

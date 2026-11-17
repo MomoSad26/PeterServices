@@ -87,6 +87,10 @@ function computeFilteredBalance(period){
     // DEUDAS
   // DEUDAS
   DB.deudas.forEach(d => {
+    // Tarifa del mensajero descontada al pagar la deuda (gasto operativo).
+    if(d.tarifa_mensajero && inRange(d.tarifa_mensajero.fecha || d.fecha_cierre)){
+      add(d.tarifa_mensajero.divisa, -Number(d.tarifa_mensajero.monto || 0));
+    }
     if(d.tipo === 'me_deben'){
       if(meDebenRestaAlCrear(d) && inRange(d.creado_en || d.fecha)){
         add(d.divisa, -Number(d.monto || 0));
@@ -353,6 +357,17 @@ function movimientosDeDivisa(nombre){
   // DEUDAS
   // =====================================================
   DB.deudas.forEach(d=>{
+    // Tarifa del mensajero: movimiento propio, separado del pago de la entrega.
+    if(d.tarifa_mensajero && d.tarifa_mensajero.divisa === nombre){
+      mov.push({
+        fecha:d.tarifa_mensajero.fecha || d.fecha_cierre,
+        tipo:'Tarifa mensajero',
+        concepto:`Tarifa de ${d.tarifa_mensajero.mensajero_nombre || 'mensajero'}`,
+        monto:-(Number(d.tarifa_mensajero.monto)||0),
+        origen:'deuda',
+        origenId:d.id
+      });
+    }
     // ------------------------------------------------
     // ME DEBEN
     // ------------------------------------------------

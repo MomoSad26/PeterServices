@@ -163,6 +163,20 @@ function obtenerSplitsEnvio(e){
   }
   return [];
 }
+/* Nombre que muestra «Pagar a» para la deuda de una entrega de un envío.
+   Regla única (creación, edición y arranque usan esta misma función):
+   · 0 o 1 destinatario → nombre del CLIENTE (o trabajador).
+   · 2 o más → nombre del DESTINATARIO de esa entrega, para distinguirlas;
+     si esa entrega no tiene destinatario, el del cliente.
+   Formato: «Nombre – cantidad divisa». La divisa se guarda con su nombre
+   interno; la pantalla la convierte al nombre visible. */
+function personaDeudaEnvio(e, entrega){
+  const titular = entityNameForEnvio(e);
+  const variosDestinatarios = obtenerSplitsEnvio(e).length >= 2;
+  const nombre = (variosDestinatarios && entrega && entrega.destinatario_nombre) ? entrega.destinatario_nombre : titular;
+  return `${nombre} – ${fmtMoney(entrega ? entrega.cantidad : 0)} ${entrega ? entrega.divisa : ''}`;
+}
+
 // Entregas efectivas para balance, deudas e historial: splits si existen;
 // de lo contrario, se usa el importe y la divisa globales.
 function obtenerEntregasEnvio(e){
@@ -187,8 +201,13 @@ function envioTieneDivisa(e,nombre){
   return obtenerEntregasEnvio(e).some(x=>x.divisa===nombre)||e?.divisa_ganancia===nombre||
     obtenerGananciasAdicionalesEnvio(e).some(x=>x.divisa===nombre);
 }
+// «Agregar destinatario» si aún no hay ninguno; «Agregar otro…» si ya hay.
+function textoBotonAgregarDestinatario(cantidad){
+  return cantidad>0 ? '+ Agregar otro destinatario' : '+ Agregar destinatario';
+}
 function entregasEnvioHtml(pref,inicial){
-  return `<div id="${pref}-entregas-list"></div><button type="button" class="btn btn-outline btn-block" id="${pref}-add-entrega">+ Agregar otro destinatario</button>`;
+  const cantidad=Array.isArray(inicial)?inicial.length:0;
+  return `<div id="${pref}-entregas-list"></div><button type="button" class="btn btn-outline btn-block" id="${pref}-add-entrega">${textoBotonAgregarDestinatario(cantidad)}</button>`;
 }
 function wireEntregasEnvio(pref,inicial){
   let splits=(Array.isArray(inicial)?inicial:[]).map(x=>({...x,id:x.id||nuevoIdEntregaEnvio()}));
@@ -207,6 +226,8 @@ function wireEntregasEnvio(pref,inicial){
       if(!d)return;const x=splits[Number(btn.dataset.pickSplit)];x.destinatario_id=d.id;x.destinatario_nombre=d.nombre;render();
     }));
     list.querySelectorAll('[data-remove-split]').forEach(btn=>btn.onclick=()=>{splits.splice(Number(btn.dataset.removeSplit),1);render();});
+    const boton=document.getElementById(`${pref}-add-entrega`);
+    if(boton)boton.textContent=textoBotonAgregarDestinatario(splits.length);
   }
   document.getElementById(`${pref}-add-entrega`).onclick=()=>{
     const cantidadGlobal=document.getElementById(`${pref}-cantidad-entregar`)?.value??'';
@@ -428,8 +449,7 @@ function showEnvioSummary(envio, entity, onSaved, cantidadEntregaReferencia){
     envio.id=nextId('envios');DB.envios.push(envio);
     const entregasEfectivas=obtenerEntregasEnvio(envio);
     if(!envio.descuenta_ahora) entregasEfectivas.forEach(split=>{
-      const persona=split.destinatario_nombre||entity.nombre;
-      crearDeudaAutomatica({tipo:'pagar_a',persona:`${persona} – ${fmtMoney(split.cantidad)} ${split.divisa}`,
+      crearDeudaAutomatica({tipo:'pagar_a',persona:personaDeudaEnvio(envio,split),
         monto:split.cantidad,divisa:split.divisa,fecha:envio.fecha_hora,nota:envio.nota||'Registrado desde envío',
         origen:'envio',origen_id:envio.id,origen_detalle_id:splits.length?split.id:null});
     });

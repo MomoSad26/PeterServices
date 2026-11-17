@@ -212,7 +212,7 @@ function renderEnvioDetalle(content, id){
       eliminarConDeshacer('Envío eliminado', ()=>{
         const deudasAsociadas=DB.deudas.filter(d=>d.origen==='envio'&&d.origen_id===e.id);
         applyEnvioBalance(e,-1);
-        deudasAsociadas.forEach(d=>{if(deudaEnvioPagadaRestoBalance(d,e))adjustBalance(d.divisa,Number(d.monto||0));});
+        deudasAsociadas.forEach(d=>{if(deudaEnvioPagadaRestoBalance(d,e))adjustBalance(d.divisa,Number(d.monto||0));revertirTarifaMensajero(d);});
         DB.deudas=DB.deudas.filter(d=>!(d.origen==='envio'&&d.origen_id===e.id));
         DB.envios = DB.envios.filter(x=>x.id!==e.id);
         save();
@@ -447,6 +447,9 @@ function guardarEdicionEnvio(e,nuevo){
   if(e.tipo!=='precio_especial')e.descuenta_ahora=nuevo.descuenta_ahora?1:0;
 
   if(envioDescuentaAhora(e)){
+    // Pasar a «Descontar ahora: Sí» elimina las deudas: si alguna estaba
+    // pagada con tarifa de mensajero, esa tarifa se devuelve.
+    deudasAnteriores.forEach(revertirTarifaMensajero);
     DB.deudas=DB.deudas.filter(d=>!(d.origen==='envio'&&d.origen_id===e.id));
   }else{
     const usadas=new Set();
@@ -461,18 +464,20 @@ function guardarEdicionEnvio(e,nuevo){
       if(!d&&splits.length&&i===0&&deudaLegacy&&!usadas.has(deudaLegacy.id))d=deudaLegacy;
       if(d){
         usadas.add(d.id);d.origen_detalle_id=splits.length?split.id:null;
-        d.persona=`${split.destinatario_nombre||entityNameForEnvio(e)} – ${fmtMoney(split.cantidad)} ${split.divisa}`;
+        d.persona=personaDeudaEnvio(e,split);
         d.monto=split.cantidad;d.divisa=split.divisa;d.fecha=e.fecha_hora;d.nota=e.nota||'Registrado desde envío';
         if(d.estado==='pagado'&&deudaEnvioDescuentaBalance(d,e))adjustBalance(d.divisa,-Number(d.monto||0));
       }else{
         const nueva=crearDeudaAutomatica({tipo:'pagar_a',
-          persona:`${split.destinatario_nombre||entityNameForEnvio(e)} – ${fmtMoney(split.cantidad)} ${split.divisa}`,
+          persona:personaDeudaEnvio(e,split),
           monto:split.cantidad,divisa:split.divisa,fecha:e.fecha_hora,nota:e.nota||'Registrado desde envío',
           origen:'envio',origen_id:e.id,origen_detalle_id:splits.length?split.id:null});
         usadas.add(nueva.id);
       }
     });
-    // Solo permanecen las deudas vinculadas a entregas que siguen existiendo.
+    // Solo permanecen las deudas vinculadas a entregas que siguen existiendo;
+    // las que se quitan devuelven la tarifa de mensajero si la tenían.
+    deudasAnteriores.filter(d=>!usadas.has(d.id)).forEach(revertirTarifaMensajero);
     DB.deudas=DB.deudas.filter(d=>!(d.origen==='envio'&&d.origen_id===e.id)||usadas.has(d.id));
   }
   applyEnvioBalance(e,1);

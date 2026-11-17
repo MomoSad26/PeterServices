@@ -205,6 +205,12 @@ function openMensajeroFormModal(id, onSaved){
     <label class="field-label">Teléfono</label>
     <input type="tel" id="msf-tel" maxlength="25" value="${escapeHtml(editing?.telefono||'')}" placeholder="Recomendado: con código de país, ej. +53 5...">
     <div class="hint">Sin teléfono no se le puede enviar la entrega por WhatsApp.</div>
+    <label class="field-label">Tarifa</label>
+    <input type="number" inputmode="decimal" min="0" step="0.01" id="msf-tarifa" value="${editing && editing.tarifa!=null ? escapeHtml(String(editing.tarifa)) : ''}" placeholder="Opcional">
+    <div class="hint">Monto fijo por entrega. Se descuenta al marcar como pagada una deuda de «Pagar a» que se le envió.</div>
+    <label class="field-label">Divisa de descuento</label>
+    <select id="msf-divisa" class="picker"><option value="">— Ninguna —</option>${divisaOptionsHtml(editing?.divisa_descuento||'')}</select>
+    <div class="hint">De qué divisa se resta la tarifa.</div>
     <label class="field-label">Nota</label>
     <textarea id="msf-nota" maxlength="500" placeholder="Opcional">${escapeHtml(editing?.nota||'')}</textarea>
     <div id="msf-error" style="color:var(--red-text);font-size:13px;margin-top:10px;display:none;"></div>
@@ -214,6 +220,9 @@ function openMensajeroFormModal(id, onSaved){
     </div>
   `);
   setTimeout(()=>document.getElementById('msf-nombre')?.focus(), 150);
+  const divisaSel = document.getElementById('msf-divisa');
+  if(!editing?.divisa_descuento) divisaSel.value = '';
+  bindAddOnSelect(divisaSel, addDivisa, (v)=>`<option value="">— Ninguna —</option>${divisaOptionsHtml(v)}`);
   document.getElementById('msf-cancel').onclick = closeModal;
   document.getElementById('msf-save').onclick = ()=>{
     const nombre = document.getElementById('msf-nombre').value.trim();
@@ -222,7 +231,16 @@ function openMensajeroFormModal(id, onSaved){
       err.textContent = 'El nombre del mensajero es obligatorio.'; err.style.display = 'block';
       return;
     }
-    const datos = {nombre, telefono: document.getElementById('msf-tel').value.trim(), nota: document.getElementById('msf-nota').value.trim()};
+    const tarifaTxt = document.getElementById('msf-tarifa').value.trim();
+    const tarifa = tarifaTxt==='' ? null : Number(tarifaTxt);
+    if(tarifa!==null && !(Number.isFinite(tarifa) && tarifa>=0)){
+      const err = document.getElementById('msf-error');
+      err.textContent = 'La tarifa debe ser un número igual o mayor que 0.'; err.style.display = 'block';
+      return;
+    }
+    const divisaDescuento = divisaSel.value && divisaSel.value!=='__add__' ? divisaSel.value : null;
+    const datos = {nombre, telefono: document.getElementById('msf-tel').value.trim(), nota: document.getElementById('msf-nota').value.trim(),
+      tarifa: tarifa===null ? null : round2(tarifa), divisa_descuento: divisaDescuento};
     let m;
     if(editing){ Object.assign(editing, datos); m = editing; }
     else { m = {id:nextId('mensajeros'), ...datos, fecha_registro:Date.now(), activo:1}; DB.mensajeros.push(m); }
@@ -241,7 +259,10 @@ function openEntregaDetalle(tipo, id, onChange){
   const filas = tipo==='destinatarios' || tipo==='compradores'
     ? fila('Nombre', x.nombre) + fila('Nombre completo', x.nombre_completo) + fila('Carnet de identidad', x.carnet) +
       fila('Teléfono', x.telefono) + fila('Dirección', x.direccion) + fila('Nota', x.nota) + fila('Registrado', fmtDate(x.fecha_registro))
-    : fila('Nombre', x.nombre) + fila('Teléfono', x.telefono) + fila('Nota', x.nota) + fila('Registrado', fmtDate(x.fecha_registro));
+    : fila('Nombre', x.nombre) + fila('Teléfono', x.telefono) +
+      (x.tarifa!=null ? fila('Tarifa', fmtMoney(x.tarifa)) : '') +
+      (x.divisa_descuento ? fila('Divisa de descuento', nombreDivisaVisible(x.divisa_descuento)) : '') +
+      fila('Nota', x.nota) + fila('Registrado', fmtDate(x.fecha_registro));
   openModal(`
     <div class="modal-title">${cfg.icono} ${escapeHtml(x.nombre)}</div>
     <div class="card" style="box-shadow:none;border:1px solid var(--line-main);padding:12px;margin-top:8px;">${filas}</div>
@@ -346,7 +367,7 @@ function destinatarioActivoDeEnvio(envio){
   const d = envio ? destinatarioPorId(envio.destinatario_id) : null;
   return d && d.activo ? d : null;
 }
-function enviarEntregaAMensajero(envio, onNotificado){
+function enviarEntregaAMensajero(envio, onNotificado, deudaId=null){
   const destinatario = destinatarioActivoDeEnvio(envio);
   if(!destinatario){ alertDialog('Sin destinatario', 'Este envío no tiene un destinatario asociado.'); return; }
   openSelectorEntrega('mensajeros', (m)=>{
@@ -381,6 +402,14 @@ function enviarEntregaAMensajero(envio, onNotificado){
     envio.mensajero_notificado_id=m.id;
     envio.mensajero_notificado_nombre=m.nombre;
     envio.mensajero_notificado_fecha=fechaNotificacion;
+    // La deuda de «Pagar a» también guarda quién la entrega: al marcarla como
+    // pagada se busca aquí el mensajero para descontar su tarifa.
+    const deuda = deudaId!=null ? DB.deudas.find(x=>x.id===deudaId) : null;
+    if(deuda){
+      deuda.mensajero_notificado_id=m.id;
+      deuda.mensajero_notificado_nombre=m.nombre;
+      deuda.mensajero_notificado_fecha=fechaNotificacion;
+    }
     save();
     const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensajeEntregaParaMensajero(destinatario, envio))}`;
     if(window.AndroidBridge && window.AndroidBridge.openExternal) window.AndroidBridge.openExternal(url);

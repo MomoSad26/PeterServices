@@ -214,7 +214,10 @@ function pruebasEstaticas(){
       'el primer split copia la cantidad y divisa globales actuales');
     await escribir('#ef-entregas-list [data-cant-split="0"]','100');
     await escribir('#ef-entregas-list [data-div-split="0"]',D1);
-    await clic('#ef-entregas-list [data-pick-split="0"]'); await clic('#sel-ent-list [data-pick]',350);
+    // `clic` pulsa el ÚLTIMO elemento visible: se elige a Dami por su id para
+    // no tomar por error el último destinatario de la lista (Lia).
+    const idDami=await p.evaluate(()=>DB.destinatarios.find(d=>d.nombre==='Dami').id);
+    await clic('#ef-entregas-list [data-pick-split="0"]'); await clic(`#sel-ent-list [data-pick="${idDami}"]`,350);
     await clic('#ef-add-entrega',250);
     check(await p.locator('#ef-entregas-list [data-cant-split="1"]').inputValue()==='15' &&
       await p.locator('#ef-entregas-list [data-div-split="1"]').inputValue()===D1,
@@ -255,7 +258,7 @@ function pruebasEstaticas(){
     check(!(await visible('#dd-edit')), 'las deudas de los splits siguen siendo automáticas y no editables');
     await clic('#dd-mensajero-btn',250); await clic('#sel-ent-list [data-pick]',350);
     check(mensajeDe(await ultimoEnlace())===`👤 Damicela Prueba\n📱 +53 5 2135359\n🧭 Calle 12 #53\n💰 100 ${D1}`,
-      'el primer split genera un mensaje para su propio destinatario');
+      'el primer split genera un mensaje para su propio destinatario: '+JSON.stringify(mensajeDe(await ultimoEnlace())));
     await clic('#dd-cerrar',250); await clic('#cd-ok',350); await clic('#wa-no',250);
     check(await saldo(D1)===splitBase1+5,'pagar split en la misma divisa que la ganancia principal no duplica el descuento');
     await clic(`#deudas-list .list-item[data-id="${deudaD2.id}"]`,300);
@@ -339,6 +342,76 @@ function pruebasEstaticas(){
       'el descuento inmediato usa la cantidad y divisa globales sin cambiar la fórmula de ganancia');
     if(await visible('#wa-no'))await clic('#wa-no',250);
 
+    seccion('5e. «Pagar a»: nombres, botón de destinatario y tarifa del mensajero');
+    // Botón: sin destinatarios «+ Agregar destinatario»; con uno o más «+ Agregar otro destinatario».
+    await ir('#/envio/cliente/' + cid);
+    check((await texto('#ef-add-entrega')).trim()==='+ Agregar destinatario','sin destinatarios el botón dice «+ Agregar destinatario»');
+    await clic('#ef-add-entrega',250);
+    check((await texto('#ef-add-entrega')).trim()==='+ Agregar otro destinatario','con un destinatario el botón cambia a «+ Agregar otro destinatario»');
+    await clic('#ef-entregas-list [data-del-split="0"]',250).catch(()=>{});
+    await ir('#/panel');
+    // Nombres: 0 o 1 destinatario → cliente; 2 o más → cada destinatario.
+    const nombresPagarA=()=>p.evaluate(()=>DB.deudas.filter(d=>d.origen==='envio').map(d=>d.persona));
+    const antesNorm=await nombresPagarA();
+    check(antesNorm.includes(`Carlos Prueba – 8,200 ${D1}`),'con un destinatario la deuda lleva el nombre del cliente: '+JSON.stringify(antesNorm));
+    check(antesNorm.includes(`Dami – 100 ${D1}`) && antesNorm.includes(`Lia Destino – 210 ${D2}`),'con dos destinatarios cada deuda lleva el nombre de su destinatario');
+    check(antesNorm.includes(`Carlos Prueba – 30 ${D1}`),'sin destinatarios la deuda lleva el nombre del cliente');
+    await p.evaluate(()=>{normalizarNombresDeudasAutomaticas();save();});
+    check(JSON.stringify(await nombresPagarA())===JSON.stringify(antesNorm),'el normalizador del arranque no cambia los nombres (consistentes tras recargar)');
+    // Mensajero con tarifa y divisa de descuento desde el formulario.
+    await ir('#/entregas/mensajeros');
+    await clic('#fab-add-entrega');
+    await escribir('#msf-nombre','Tito Tarifa'); await escribir('#msf-tel','+53 5 3334444');
+    await escribir('#msf-tarifa','50'); await p.selectOption('#msf-divisa',D1);
+    await clic('#msf-save',350);
+    const tito=await p.evaluate(()=>{const m=DB.mensajeros.find(x=>x.nombre==='Tito Tarifa');return m?{id:m.id,tarifa:m.tarifa,divisa:m.divisa_descuento}:null;});
+    check(tito && tito.tarifa===50 && tito.divisa===D1,'el mensajero guarda tarifa y divisa de descuento: '+JSON.stringify(tito));
+    async function pagarConTito(){
+      await nuevoEnvio({descuenta:0, destinatario:true});
+      const id=await p.evaluate(()=>{const e=DB.envios[DB.envios.length-1];return DB.deudas.find(d=>d.origen==='envio'&&d.origen_id===e.id).id;});
+      await ir('#/deudas/pagar_a');
+      await clic(`#deudas-list .list-item[data-id="${id}"]`,350);
+      await clic('#dd-mensajero-btn',300); await clic(`#sel-ent-list [data-pick="${tito.id}"]`,400);
+      check(await p.evaluate(id=>DB.deudas.find(d=>d.id===id).mensajero_notificado_id,id)===tito.id,'la deuda guarda el mensajero notificado');
+      await clic('#dd-cerrar',300); await clic('#cd-ok',450);
+      return id;
+    }
+    let t1=await saldo(D1);
+    const deudaTarifa=await pagarConTito();
+    check(await saldo(D1)===t1-8200-50,'al pagar se descuentan la entrega y la tarifa del mensajero');
+    check(await p.evaluate(({n,id})=>movimientosDeDivisa(n).some(m=>m.tipo==='Tarifa mensajero'&&m.concepto==='Tarifa de Tito Tarifa'&&m.monto===-50&&m.origenId===id),{n:D1,id:deudaTarifa}),
+      'el historial por divisa registra «Tarifa mensajero – Tarifa de Tito Tarifa»');
+    if(await visible('#wa-no'))await clic('#wa-no',250);
+    await clic('#deudas-tabs .tab[data-v="historial"]',350);
+    await clic(`#deudas-list .list-item[data-id="${deudaTarifa}"]`,350);
+    await clic('#dd-del',300); await clic('#cd-ok',450);
+    check(await saldo(D1)===t1,'eliminar la deuda pagada revierte la entrega y la tarifa');
+    // Tarifa sin divisa: aviso y sin descuento.
+    await p.evaluate(id=>{DB.mensajeros.find(m=>m.id===id).divisa_descuento=null;save();},tito.id);
+    t1=await saldo(D1);
+    await pagarConTito();
+    check(await visible('#tm-ok') && (await texto('.modal-msg')).includes('Este mensajero tiene tarifa pero no tiene divisa de descuento configurada. Edítalo para poder descontar la tarifa.'),
+      'tarifa sin divisa: aparece el aviso exacto');
+    await clic('#tm-ok',300);
+    check(await saldo(D1)===t1-8200,'tarifa sin divisa: solo se descuenta la entrega');
+    if(await visible('#wa-no'))await clic('#wa-no',250);
+    // Tarifa en 0: no se descuenta nada extra. Y eliminar el envío revierte la tarifa aplicada.
+    await p.evaluate(({id,d})=>{const m=DB.mensajeros.find(x=>x.id===id);m.divisa_descuento=d;m.tarifa=0;save();},{id:tito.id,d:D1});
+    t1=await saldo(D1);
+    await pagarConTito();
+    check(await saldo(D1)===t1-8200,'tarifa 0: no se descuenta tarifa');
+    if(await visible('#wa-no'))await clic('#wa-no',250);
+    await p.evaluate(id=>{DB.mensajeros.find(x=>x.id===id).tarifa=50;save();},tito.id);
+    t1=await saldo(D1);
+    await pagarConTito();
+    const envioTarifa=await p.evaluate(()=>DB.envios[DB.envios.length-1].id);
+    check(await saldo(D1)===t1-8250,'con tarifa restaurada se descuenta de nuevo');
+    if(await visible('#wa-no'))await clic('#wa-no',250);
+    await ir('#/envio-detalle/' + envioTarifa);
+    await clic('#ed-del',300); await clic('#cd-ok',450);
+    check(await saldo(D1)===t1,'eliminar el envío pagado revierte también la tarifa del mensajero');
+    await ir('#/panel');
+
     seccion('6. Me deben: deudas manuales (tres tipos)');
     await ir('#/deudas/me_deben');
     const s0 = await saldo(D1);
@@ -380,7 +453,8 @@ function pruebasEstaticas(){
         comprador_id:c.id,comprador_nombre:c.nombre,comprador_nombre_completo:'',comprador_telefono:'',comprador_direccion:''};
       DB.deudas.push(d);save();return d.id;
     },D1);
-    await ir('#/deudas/me_deben'); await clicFila('#deudas-list','Grupo Manual Prueba');
+    // Se viene de la pestaña Historial con el mismo hash: se vuelve a «Me deben» con su pestaña.
+    await ir('#/deudas/me_deben'); await clic('#deudas-tabs .tab[data-v="me_deben"]',350); await clicFila('#deudas-list','Grupo Manual Prueba');
     check(await visible('[data-edit-deuda]'),'el detalle de un grupo ofrece editar los registros manuales pendientes');
     await clic(`[data-edit-deuda="${grupoDeudaId}"]`,250);
     await escribir('#de-monto','30'); await clic('#de-save',350);

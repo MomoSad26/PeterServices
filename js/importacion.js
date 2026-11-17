@@ -137,6 +137,10 @@ function mergeImport(incoming){
       else if(t==='deudas'){
         if(r.tipo==='me_deben'){if(meDebenRestaAlCrear(r)){add(r.divisa,-num(r.monto));if(r.estado==='cobrado')add(r.divisa,num(r.monto));}else if(meDebenSumaAlCobrar(r)&&r.estado==='cobrado')add(r.divisa,num(r.monto));}
         else if(r.tipo==='pagar_a'&&r.estado==='pagado'&&deudaDescuentaAlPagar(r))add(r.divisa,-num(r.monto));
+        // Tarifa de mensajero ya descontada en el origen: se aplica una vez.
+        if(r.tarifa_mensajero&&r.estado==='pagado')add(r.tarifa_mensajero.divisa,-num(r.tarifa_mensajero.monto));
+        if(r.mensajero_notificado_id!=null&&mapas.mensajeros.has(r.mensajero_notificado_id))r.mensajero_notificado_id=mapas.mensajeros.get(r.mensajero_notificado_id);
+        if(r.tarifa_mensajero&&r.tarifa_mensajero.mensajero_id!=null&&mapas.mensajeros.has(r.tarifa_mensajero.mensajero_id))r.tarifa_mensajero.mensajero_id=mapas.mensajeros.get(r.tarifa_mensajero.mensajero_id);
       }
     });
   }
